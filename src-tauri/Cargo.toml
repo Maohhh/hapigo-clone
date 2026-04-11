@@ -1,0 +1,23 @@
+[package]
+name = "hapigo-clone"
+version = "1.0.0"
+description = "A Hapigo clone - efficient launcher for macOS and Windows"
+authors = ["you"]
+license = "MIT"
+repository = ""
+edition = "2021"
+rust-version = "1.70"
+
+[build-dependencies]
+tauri-build = { version = "1.5.0", features = [] }
+
+[dependencies]
+tauri = { version = "1.5.0", features = [ "global-shortcut-all", "clipboard-all", "shell-open", "global-shortcut"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+arboard = "3.3"
+base64 = "0.22"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

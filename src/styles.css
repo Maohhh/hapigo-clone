@@ -1,0 +1,246 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: transparent;
+}
+
+.app {
+  width: 700px;
+  margin: 0 auto;
+  background: rgba(30, 30, 30, 0.95);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.search-box {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.search-box input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 18px;
+  outline: none;
+}
+
+.search-box input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.result-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.result-list.empty {
+  padding: 40px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.result-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 20px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.result-item:hover,
+.result-item.selected {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.result-item .icon {
+  font-size: 24px;
+  margin-right: 12px;
+}
+
+.result-item .content {
+  flex: 1;
+}
+
+.result-item .title {
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.result-item .subtitle {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+/* Translate Panel Styles */
+.translate-panel {
+  background: rgba(40, 40, 40, 0.98);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 16px 20px;
+}
+
+.translate-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.translate-header h3 {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.close-btn:hover {
+  color: #fff;
+}
+
+.translate-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.translate-actions button {
+  flex: 1;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.translate-actions button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.translate-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.translate-input {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lang-select {
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 14px;
+  outline: none;
+}
+
+.lang-select option {
+  background: #333;
+}
+
+.translate-input textarea {
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 14px;
+  resize: vertical;
+  outline: none;
+}
+
+.translate-input textarea::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.translate-btn {
+  padding: 10px 16px;
+  background: #007AFF;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.translate-btn:hover:not(:disabled) {
+  background: #0056CC;
+}
+
+.translate-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.translate-result {
+  margin-top: 12px;
+  padding: 12px;
+  background: rgba(0, 122, 255, 0.1);
+  border: 1px solid rgba(0, 122, 255, 0.3);
+  border-radius: 6px;
+}
+
+.result-header {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.result-text {
+  color: #fff;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/* Tab Navigation */
+.tab-nav {
+  display: flex;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 12px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tab-btn.active {
+  color: #007AFF;
+  border-bottom: 2px solid #007AFF;
+}
