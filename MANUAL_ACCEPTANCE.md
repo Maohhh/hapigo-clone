@@ -1,72 +1,51 @@
 # Hapigo Clone Manual Acceptance
 
-This checklist verifies the parts that cannot be reliably exercised from the current sandbox because macOS UI automation may require Automation and Accessibility permissions.
+## 当前可验收范围
 
-## Build Artifact
+### 1. 产品壳层
+- 左侧导航可切换：主页 / 搜索 / 翻译 / 剪贴板 / 设置
+- 顶部工具栏存在，整体视觉统一
 
-- App bundle: `src-tauri/target/release/bundle/macos/Hapigo Clone.app`
-- DMG artifact, after building with the current config: `src-tauri/target/release/bundle/dmg/Hapigo Clone_1.0.0_aarch64.dmg`
+### 2. 搜索工作台
+- 支持搜索应用与文件
+- 右侧可查看基础预览信息
+  - 类型
+  - 大小
+  - 修改时间
+  - 文本类 snippet
+- 底部动作栏支持：
+  - 打开
+  - 复制内容
+  - 访达显示
+  - 复制路径
 
-## Launch
+### 3. 命令 / 计算模式
+- 在搜索框输入 `=1+2` 这类表达式，可直接得到结果
+- 可复制计算结果
 
-1. Open the app:
+### 4. 翻译工作台
+- 输入文本翻译
+- 截图翻译
+- 划词翻译（当前基于剪贴板读取）
+- 可复制原文 / 翻译结果
 
-   ```bash
-   open -n "src-tauri/target/release/bundle/macos/Hapigo Clone.app"
-   ```
+### 5. 剪贴板工作台
+- 可查看最近剪贴板列表
+- 可查看选中条目的详情
+- 可重新复制条目
+- 可刷新列表
 
-2. Confirm a window titled `Hapigo Clone` appears.
-3. Confirm the search tab is selected and the search input is focused.
+### 6. 设置页
+- 已完成信息架构骨架
+- 展示后续配置方向
 
-Expected result: the app stays open without a crash, and the search input is ready for typing.
+## 当前仍非最终完善项
+- 翻译引擎仍为 mock 结果，不是正式商业翻译服务
+- 剪贴板历史当前为基础实现，尚未做到长期持久化数据库
+- 更多动作、主题、统计与高级集成仍可继续增强
+- Apple Notes / Shortcuts / 1Password 等深度集成尚未正式接入
 
-## Search Results
-
-1. Type `safari`.
-2. Confirm the status text changes from `Searching...` to a result count.
-3. Confirm results appear in a vertical list.
-4. Confirm at least one result has an app/file icon, title, and parent path subtitle.
-5. Clear the input.
-
-Expected result: matching apps/files appear, and clearing the query returns to the empty state.
-
-## Keyboard Navigation
-
-1. Search for a query with multiple results, for example `app` or `safari`.
-2. Press `ArrowDown`.
-3. Press `ArrowUp`.
-4. Press `Enter` on a harmless app or file result.
-
-Expected result: the selected row moves down/up without layout jumps. `Enter` opens the selected item through macOS.
-
-## Mouse Interaction
-
-1. Search for a query with multiple results.
-2. Move the mouse over a non-selected row.
-3. Click that row.
-
-Expected result: hover changes the selected row, and click opens the hovered result.
-
-## Translation Tab Smoke Test
-
-1. Click `翻译`.
-2. Enter `hello`.
-3. Click `翻译`.
-
-Expected result: a mocked translation result appears as `[翻译结果] hello`.
-
-## Screenshot Translation Smoke Test
-
-1. Click `🌐 翻译`.
-2. Click `截图翻译` inside the translate panel.
-3. If macOS asks for Screen Recording permission, grant it in System Settings and retry.
-4. Select any screen region, or press Escape to cancel.
-
-Expected result: selecting a region updates the input with the fixed placeholder `[截图翻译功能需要集成 OCR 服务]`, not OCR-derived text. Canceling should not crash the app.
-
-## Notes
-
-- Translation is currently mocked and does not call a real provider.
-- Screenshot translation captures an image but still needs OCR integration.
-- Selected-text translation currently reads clipboard text instead of true OS selected text.
-- AppleScript/Accessibility automation may hang or fail unless macOS permissions are configured, so manual validation is the reliable UI acceptance path for now.
+## 建议验收方式
+1. 先整体看 UI 是否达到统一桌面产品感
+2. 再逐页测试核心流程
+3. 最后列出你希望继续补强的“完整版 2.0”细节
