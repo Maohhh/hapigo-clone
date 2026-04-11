@@ -16,7 +16,7 @@ export default function ResultList({
   onOpen,
 }: ResultListProps) {
   if (results.length === 0) {
-    return <div className="result-list empty">{emptyText || "Start typing to search..."}</div>;
+    return <div className="result-list empty">{emptyText || "开始输入以搜索..."}</div>;
   }
 
   return (
@@ -28,11 +28,14 @@ export default function ResultList({
           onMouseEnter={() => onSelect(index)}
           onClick={() => onOpen(index)}
         >
-          <span className="icon">{result.icon || "📄"}</span>
+          <div className="result-icon-box">
+            <span className="icon">{result.icon || "📄"}</span>
+          </div>
           <div className="content">
             <div className="title">{result.title}</div>
             {result.subtitle && <div className="subtitle">{result.subtitle}</div>}
           </div>
+          <div className="result-action-hint">◉</div>
         </div>
       ))}
     </div>
