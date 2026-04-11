@@ -10,6 +10,26 @@ export interface SearchResult {
   action?: () => void;
 }
 
+export interface PreviewInfo {
+  path: string;
+  title: string;
+  kind: string;
+  parent?: string;
+  exists: boolean;
+  isDir: boolean;
+  sizeBytes?: number;
+  modifiedAt?: number;
+  snippet?: string;
+}
+
+export interface ClipboardHistoryItem {
+  id: string;
+  kind: string;
+  title: string;
+  preview: string;
+  full_text: string;
+}
+
 export interface HomeShortcut {
   id: NavTab;
   title: string;

@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/tauri";
 import SearchBox from "./components/SearchBox";
 import ResultList from "./components/ResultList";
 import TranslatePanel from "./components/TranslatePanel";
-import { HomeShortcut, NavTab, SearchResult } from "./types";
+import { ClipboardHistoryItem, HomeShortcut, NavTab, PreviewInfo, SearchResult } from "./types";
 
 const homeShortcuts: HomeShortcut[] = [
   {
@@ -23,9 +23,9 @@ const homeShortcuts: HomeShortcut[] = [
   {
     id: "clipboard",
     title: "剪贴板",
-    subtitle: "后续补齐历史记录、固定与预览",
+    subtitle: "查看最近内容、固定条目和快速操作",
     icon: "贴",
-    badge: "规划中",
+    badge: "进行中",
   },
   {
     id: "settings",
@@ -44,6 +44,18 @@ const sidebarTabs: { id: NavTab; label: string; icon: string }[] = [
   { id: "settings", label: "设置", icon: "⚙" },
 ];
 
+function formatSize(bytes?: number) {
+  if (!bytes && bytes !== 0) return "-";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatDate(timestamp?: number) {
+  if (!timestamp) return "-";
+  return new Date(timestamp * 1000).toLocaleString("zh-CN", { hour12: false });
+}
+
 function App() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -51,14 +63,36 @@ function App() {
   const [statusText, setStatusText] = useState("开始输入以搜索应用、文件或命令...");
   const [activeTab, setActiveTab] = useState<NavTab>("home");
   const [isPinned, setIsPinned] = useState(false);
+  const [previewInfo, setPreviewInfo] = useState<PreviewInfo | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [clipboardItems, setClipboardItems] = useState<ClipboardHistoryItem[]>([]);
+  const [clipboardLoading, setClipboardLoading] = useState(false);
+  const [clipboardSelectedId, setClipboardSelectedId] = useState<string | null>(null);
 
   const selectedResult = results[selectedIndex] ?? null;
+  const selectedClipboardItem = clipboardItems.find((item) => item.id === clipboardSelectedId) ?? clipboardItems[0] ?? null;
+
+  const loadClipboardHistory = useCallback(async () => {
+    setClipboardLoading(true);
+    try {
+      const items = await invoke<ClipboardHistoryItem[]>("get_clipboard_history", { limit: 12 });
+      setClipboardItems(items);
+      setClipboardSelectedId(items[0]?.id ?? null);
+    } catch (error) {
+      console.error("Failed to load clipboard history", error);
+      setClipboardItems([]);
+      setClipboardSelectedId(null);
+    } finally {
+      setClipboardLoading(false);
+    }
+  }, []);
 
   const handleSearch = useCallback(async (input: string) => {
     setQuery(input);
     if (!input.trim()) {
       setResults([]);
       setSelectedIndex(0);
+      setPreviewInfo(null);
       setStatusText("开始输入以搜索应用、文件或命令...");
       return;
     }
@@ -80,6 +114,7 @@ function App() {
       console.error("Search failed", error);
       setResults([]);
       setSelectedIndex(0);
+      setPreviewInfo(null);
       setStatusText(`搜索失败：${String(error)}`);
     }
   }, []);
@@ -135,6 +170,43 @@ function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
 
+  useEffect(() => {
+    if (activeTab === "clipboard") {
+      void loadClipboardHistory();
+    }
+  }, [activeTab, loadClipboardHistory]);
+
+  useEffect(() => {
+    if (activeTab !== "search" || !selectedResult?.path) {
+      setPreviewInfo(null);
+      return;
+    }
+
+    let cancelled = false;
+    setPreviewLoading(true);
+    invoke<PreviewInfo>("get_preview_info", { path: selectedResult.path })
+      .then((info) => {
+        if (!cancelled) {
+          setPreviewInfo(info);
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to load preview info", error);
+        if (!cancelled) {
+          setPreviewInfo(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setPreviewLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, selectedResult]);
+
   const searchSummary = useMemo(() => {
     if (!query.trim()) return "按下「空格」或「⌘ + J」搜索文件";
     if (results.length === 0) return statusText;
@@ -185,7 +257,7 @@ function App() {
               {activeTab === "home" && "统一入口、模块导航和状态总览"}
               {activeTab === "search" && "左侧结果列表，右侧详情预览，底部动作栏"}
               {activeTab === "translate" && "统一深色语言下的输入、截图和翻译结果"}
-              {activeTab === "clipboard" && "下一阶段补齐历史记录、预览和 pin"}
+              {activeTab === "clipboard" && "最近内容、预览和后续固定能力"}
               {activeTab === "settings" && "快捷键、主题、集成和窗口行为"}
             </div>
           </div>
@@ -237,17 +309,17 @@ function App() {
                   <ul>
                     <li>统一产品壳层与导航</li>
                     <li>重做搜索页为双栏布局</li>
-                    <li>重做翻译页并统一视觉语言</li>
-                    <li>为剪贴板与设置预留结构</li>
+                    <li>重做翻译页为深色统一视觉</li>
+                    <li>补第一版剪贴板和预览能力</li>
                   </ul>
                 </div>
                 <div className="info-card">
                   <h3>后续模块</h3>
                   <ul>
-                    <li>剪贴板历史</li>
                     <li>命令与计算</li>
                     <li>集成管理</li>
-                    <li>主题与统计</li>
+                    <li>多主题</li>
+                    <li>使用统计</li>
                   </ul>
                 </div>
               </div>
@@ -275,27 +347,41 @@ function App() {
                 </div>
 
                 <div className="preview-panel">
-                  {selectedResult ? (
+                  {previewLoading ? (
+                    <div className="preview-empty">
+                      <div className="preview-title">正在读取预览...</div>
+                    </div>
+                  ) : previewInfo ? (
                     <>
-                      <div className="preview-icon">{selectedResult.icon || "📄"}</div>
-                      <div className="preview-title">{selectedResult.title}</div>
-                      <div className="preview-subtitle">{selectedResult.subtitle || "暂无补充描述"}</div>
+                      <div className="preview-icon">{selectedResult?.icon || "📄"}</div>
+                      <div className="preview-title">{previewInfo.title}</div>
+                      <div className="preview-subtitle">{previewInfo.parent || "暂无父级路径"}</div>
                       <div className="preview-meta-list">
                         <div className="preview-meta-row">
                           <span>类型</span>
-                          <strong>{selectedResult.type}</strong>
+                          <strong>{previewInfo.kind}</strong>
                         </div>
                         <div className="preview-meta-row">
-                          <span>路径</span>
-                          <strong>{selectedResult.path || "无可用路径"}</strong>
+                          <span>大小</span>
+                          <strong>{formatSize(previewInfo.sizeBytes)}</strong>
                         </div>
+                        <div className="preview-meta-row">
+                          <span>修改时间</span>
+                          <strong>{formatDate(previewInfo.modifiedAt)}</strong>
+                        </div>
+                        {previewInfo.snippet && (
+                          <div className="preview-snippet-card">
+                            <span>快速预览</span>
+                            <pre>{previewInfo.snippet}</pre>
+                          </div>
+                        )}
                       </div>
                     </>
                   ) : (
                     <div className="preview-empty">
                       <div className="preview-icon muted">⌕</div>
                       <div className="preview-title">等待选择结果</div>
-                      <div className="preview-subtitle">后续这里会扩展成真正的文档/应用预览区。</div>
+                      <div className="preview-subtitle">后续这里会扩展成更完整的文档/应用预览区。</div>
                     </div>
                   )}
                 </div>
@@ -319,9 +405,52 @@ function App() {
           {activeTab === "translate" && <TranslatePanel />}
 
           {activeTab === "clipboard" && (
-            <div className="placeholder-page">
-              <h2>剪贴板页面</h2>
-              <p>这里会承接 HapiGo 风格的历史列表、预览、Pin 和快速操作。</p>
+            <div className="clipboard-page">
+              <div className="clipboard-list-card">
+                <div className="clipboard-header-row">
+                  <h3>最近剪贴板</h3>
+                  <button className="icon-btn small" onClick={() => void loadClipboardHistory()}>↻</button>
+                </div>
+
+                <div className="clipboard-list">
+                  {clipboardLoading ? (
+                    <div className="clipboard-empty">正在读取剪贴板...</div>
+                  ) : clipboardItems.length === 0 ? (
+                    <div className="clipboard-empty">还没有可用内容</div>
+                  ) : (
+                    clipboardItems.map((item) => (
+                      <button
+                        key={item.id}
+                        className={`clipboard-item ${selectedClipboardItem?.id === item.id ? "active" : ""}`}
+                        onClick={() => setClipboardSelectedId(item.id)}
+                      >
+                        <div className="clipboard-item-top">
+                          <span className="clipboard-kind">{item.kind}</span>
+                        </div>
+                        <div className="clipboard-item-title">{item.title}</div>
+                        <div className="clipboard-item-preview">{item.preview}</div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="clipboard-preview-card">
+                {selectedClipboardItem ? (
+                  <>
+                    <div className="preview-title">{selectedClipboardItem.title}</div>
+                    <div className="preview-subtitle">类型：{selectedClipboardItem.kind}</div>
+                    <div className="clipboard-fulltext">{selectedClipboardItem.full_text}</div>
+                    <div className="action-dock clipboard-dock">
+                      <button className="dock-btn primary">1 复制</button>
+                      <button className="dock-btn">2 固定</button>
+                      <button className="dock-btn">3 删除</button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="clipboard-empty large">选择左侧条目查看详情</div>
+                )}
+              </div>
             </div>
           )}
 
@@ -338,6 +467,10 @@ function App() {
               <div className="settings-card">
                 <h3>外观主题</h3>
                 <p>后续支持多主题、选中态色板和视觉细节切换。</p>
+              </div>
+              <div className="settings-card">
+                <h3>对接应用</h3>
+                <p>后续会从 Apple Notes、Shortcuts、1Password 等优先开始接入。</p>
               </div>
             </div>
           )}

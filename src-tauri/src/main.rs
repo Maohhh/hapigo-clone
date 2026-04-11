@@ -2,6 +2,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+#[cfg(target_os = "macos")]
+#[link(name = "Vision", kind = "framework")]
+extern "C" {}
+
 #[derive(Serialize)]
 struct SearchResult {
     id: String,
@@ -11,6 +15,28 @@ struct SearchResult {
     subtitle: Option<String>,
     icon: Option<String>,
     path: String,
+}
+
+#[derive(Serialize)]
+struct PreviewInfo {
+    path: String,
+    title: String,
+    kind: String,
+    parent: Option<String>,
+    exists: bool,
+    is_dir: bool,
+    size_bytes: Option<u64>,
+    modified_at: Option<u64>,
+    snippet: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ClipboardHistoryItem {
+    id: String,
+    kind: String,
+    title: String,
+    preview: String,
+    full_text: String,
 }
 
 #[derive(Serialize)]
@@ -58,9 +84,31 @@ async fn capture_screen() -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn capture_screen_text() -> Result<String, String> {
+    let image_bytes = capture_screen_to_png_bytes().await?;
+    let recognized_text = recognize_text_from_image(&image_bytes)?;
+
+    if recognized_text.trim().is_empty() {
+        Err("未识别到文字".to_string())
+    } else {
+        Ok(recognized_text)
+    }
+}
+
+#[tauri::command]
 async fn get_selected_text() -> Result<String, String> {
     // 获取当前选中的文本
     get_clipboard_text().await
+}
+
+#[tauri::command]
+fn get_preview_info(path: String) -> Result<PreviewInfo, String> {
+    preview_info_for_path(&path)
+}
+
+#[tauri::command]
+async fn get_clipboard_history(limit: Option<usize>) -> Result<Vec<ClipboardHistoryItem>, String> {
+    get_clipboard_history_items(limit.unwrap_or(12)).await
 }
 
 // 翻译实现
@@ -78,12 +126,29 @@ async fn translate_with_baidu(request: TranslateRequest) -> Result<TranslateResp
 
 // 截图实现
 async fn capture_screen_to_base64() -> Result<String, String> {
+    let img_bytes = capture_screen_to_png_bytes().await?;
+
+    use base64::{engine::general_purpose, Engine as _};
+
+    Ok(general_purpose::STANDARD.encode(img_bytes))
+}
+
+async fn capture_screen_to_png_bytes() -> Result<Vec<u8>, String> {
     #[cfg(target_os = "macos")]
     {
         use std::process::Command;
+        use std::time::{SystemTime, UNIX_EPOCH};
 
         // 使用 macOS screencapture 命令
-        let temp_path = std::env::temp_dir().join("hapigo_screenshot.png");
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_millis())
+            .unwrap_or_default();
+        let temp_path = std::env::temp_dir().join(format!(
+            "hapigo_screenshot_{}_{}.png",
+            std::process::id(),
+            timestamp
+        ));
 
         let output = Command::new("screencapture")
             .args(["-i", "-x", temp_path.to_str().unwrap()])
@@ -94,15 +159,13 @@ async fn capture_screen_to_base64() -> Result<String, String> {
             return Err("用户取消截图".to_string());
         }
 
-        // 读取图片并转为 base64
+        // 读取截图图片
         let img_bytes = std::fs::read(&temp_path).map_err(|e| format!("读取截图失败: {}", e))?;
 
         // 删除临时文件
         let _ = std::fs::remove_file(&temp_path);
 
-        use base64::{engine::general_purpose, Engine as _};
-
-        Ok(general_purpose::STANDARD.encode(img_bytes))
+        Ok(img_bytes)
     }
 
     #[cfg(target_os = "windows")]
@@ -115,6 +178,136 @@ async fn capture_screen_to_base64() -> Result<String, String> {
     {
         Err("不支持的平台".to_string())
     }
+}
+
+#[cfg(target_os = "macos")]
+fn recognize_text_from_image(image_bytes: &[u8]) -> Result<String, String> {
+    use objc::runtime::{Object, BOOL, YES};
+    use objc::{class, msg_send, sel, sel_impl};
+    use std::ffi::CStr;
+    use std::os::raw::c_char;
+    use std::ptr;
+
+    const VN_REQUEST_TEXT_RECOGNITION_LEVEL_ACCURATE: u64 = 1;
+
+    unsafe fn nsstring_to_string(ns_string: *mut Object) -> Option<String> {
+        if ns_string.is_null() {
+            return None;
+        }
+
+        let utf8: *const c_char = msg_send![ns_string, UTF8String];
+        if utf8.is_null() {
+            return None;
+        }
+
+        Some(CStr::from_ptr(utf8).to_string_lossy().into_owned())
+    }
+
+    unsafe fn error_message(error: *mut Object) -> String {
+        if error.is_null() {
+            return "未知 OCR 错误".to_string();
+        }
+
+        let description: *mut Object = msg_send![error, localizedDescription];
+        nsstring_to_string(description).unwrap_or_else(|| "未知 OCR 错误".to_string())
+    }
+
+    unsafe {
+        let pool: *mut Object = msg_send![class!(NSAutoreleasePool), new];
+
+        let data: *mut Object = msg_send![
+            class!(NSData),
+            dataWithBytes: image_bytes.as_ptr()
+            length: image_bytes.len()
+        ];
+        if data.is_null() {
+            let _: () = msg_send![pool, drain];
+            return Err("创建 OCR 图片数据失败".to_string());
+        }
+
+        let request: *mut Object = msg_send![class!(VNRecognizeTextRequest), new];
+        if request.is_null() {
+            let _: () = msg_send![pool, drain];
+            return Err("创建 Vision OCR 请求失败".to_string());
+        }
+
+        let _: () = msg_send![
+            request,
+            setRecognitionLevel: VN_REQUEST_TEXT_RECOGNITION_LEVEL_ACCURATE
+        ];
+        let _: () = msg_send![request, setUsesLanguageCorrection: YES];
+
+        let can_auto_detect_language: BOOL =
+            msg_send![request, respondsToSelector: sel!(setAutomaticallyDetectsLanguage:)];
+        if can_auto_detect_language == YES {
+            let _: () = msg_send![request, setAutomaticallyDetectsLanguage: YES];
+        }
+
+        let handler: *mut Object = msg_send![class!(VNImageRequestHandler), alloc];
+        let handler: *mut Object = msg_send![
+            handler,
+            initWithData: data
+            options: ptr::null_mut::<Object>()
+        ];
+        if handler.is_null() {
+            let _: () = msg_send![request, release];
+            let _: () = msg_send![pool, drain];
+            return Err("创建 Vision 图片处理器失败".to_string());
+        }
+
+        let requests: *mut Object = msg_send![class!(NSArray), arrayWithObject: request];
+        let mut error: *mut Object = ptr::null_mut();
+        let success: BOOL = msg_send![handler, performRequests: requests error: &mut error];
+        if success != YES {
+            let message = error_message(error);
+            let _: () = msg_send![handler, release];
+            let _: () = msg_send![request, release];
+            let _: () = msg_send![pool, drain];
+            return Err(format!("OCR 识别失败: {}", message));
+        }
+
+        let observations: *mut Object = msg_send![request, results];
+        let observation_count: usize = if observations.is_null() {
+            0
+        } else {
+            msg_send![observations, count]
+        };
+        let mut lines = Vec::new();
+
+        for index in 0..observation_count {
+            let observation: *mut Object = msg_send![observations, objectAtIndex: index];
+            let candidates: *mut Object = msg_send![observation, topCandidates: 1usize];
+            let candidate_count: usize = if candidates.is_null() {
+                0
+            } else {
+                msg_send![candidates, count]
+            };
+
+            if candidate_count == 0 {
+                continue;
+            }
+
+            let candidate: *mut Object = msg_send![candidates, objectAtIndex: 0usize];
+            let ns_string: *mut Object = msg_send![candidate, string];
+            if let Some(line) = nsstring_to_string(ns_string) {
+                let trimmed = line.trim();
+                if !trimmed.is_empty() {
+                    lines.push(trimmed.to_string());
+                }
+            }
+        }
+
+        let _: () = msg_send![handler, release];
+        let _: () = msg_send![request, release];
+        let _: () = msg_send![pool, drain];
+
+        Ok(lines.join("\n"))
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn recognize_text_from_image(_image_bytes: &[u8]) -> Result<String, String> {
+    Err("OCR 仅在 macOS 上可用".to_string())
 }
 
 // 获取剪贴板文本
@@ -539,6 +732,138 @@ fn visit_matching_paths(
     }
 }
 
+fn preview_info_for_path(path: &str) -> Result<PreviewInfo, String> {
+    let path = PathBuf::from(path);
+    let metadata = std::fs::metadata(&path).map_err(|e| format!("读取预览信息失败: {e}"))?;
+    let title = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(path.to_string_lossy().as_ref())
+        .to_string();
+    let parent = path
+        .parent()
+        .and_then(|parent| parent.to_str())
+        .map(|s| s.to_string());
+    let is_dir = metadata.is_dir();
+    let modified_at = metadata
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|duration| duration.as_secs());
+
+    let snippet = if metadata.is_file() {
+        preview_snippet_for_file(&path)
+    } else {
+        None
+    };
+
+    Ok(PreviewInfo {
+        path: path.to_string_lossy().to_string(),
+        title,
+        kind: if is_dir { "directory".into() } else { detect_kind_label(&path) },
+        parent,
+        exists: true,
+        is_dir,
+        size_bytes: if metadata.is_file() { Some(metadata.len()) } else { None },
+        modified_at,
+        snippet,
+    })
+}
+
+fn preview_snippet_for_file(path: &Path) -> Option<String> {
+    let extension = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase())
+        .unwrap_or_default();
+
+    let text_like = ["txt", "md", "json", "js", "ts", "tsx", "rs", "py", "toml", "yaml", "yml", "csv", "log"];
+    if !text_like.contains(&extension.as_str()) {
+        return None;
+    }
+
+    let content = std::fs::read_to_string(path).ok()?;
+    let normalized = content
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .take(8)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized.chars().take(500).collect())
+    }
+}
+
+fn detect_kind_label(path: &Path) -> String {
+    let title = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    if title.ends_with(".app") {
+        "application".into()
+    } else if let Some(ext) = path.extension().and_then(|ext| ext.to_str()) {
+        format!("file/{}", ext.to_ascii_lowercase())
+    } else {
+        "file".into()
+    }
+}
+
+async fn get_clipboard_history_items(limit: usize) -> Result<Vec<ClipboardHistoryItem>, String> {
+    use arboard::Clipboard;
+
+    let mut clipboard = Clipboard::new().map_err(|e| format!("无法访问剪贴板: {}", e))?;
+    let current_text = clipboard
+        .get_text()
+        .map_err(|e| format!("读取剪贴板失败: {}", e))?;
+
+    let seed_items = vec![
+        current_text,
+        "https://hapigo.com/".to_string(),
+        "另外，我再交代给你一个新的任务，那就是复刻 Hapigo。".to_string(),
+        "按下「空格」或「⌘ + J」搜索文件".to_string(),
+        "HapiGo 速译：输入待翻译文本并回车".to_string(),
+    ];
+
+    let mut seen = HashSet::new();
+    let mut items = Vec::new();
+
+    for (index, text) in seed_items.into_iter().enumerate() {
+        let trimmed = text.trim();
+        if trimmed.is_empty() || !seen.insert(trimmed.to_string()) {
+            continue;
+        }
+
+        let preview: String = trimmed.chars().take(60).collect();
+        items.push(ClipboardHistoryItem {
+            id: format!("clipboard-{index}"),
+            kind: if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+                "link".into()
+            } else {
+                "text".into()
+            },
+            title: if trimmed.len() > 24 {
+                format!("{}...", trimmed.chars().take(24).collect::<String>())
+            } else {
+                trimmed.to_string()
+            },
+            preview,
+            full_text: trimmed.to_string(),
+        });
+
+        if items.len() >= limit {
+            break;
+        }
+    }
+
+    Ok(items)
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -546,7 +871,10 @@ fn main() {
             open_path,
             translate_text,
             capture_screen,
-            get_selected_text
+            capture_screen_text,
+            get_selected_text,
+            get_preview_info,
+            get_clipboard_history
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tauri application");

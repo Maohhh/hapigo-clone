@@ -174,6 +174,12 @@ button {
   cursor: pointer;
 }
 
+.icon-btn.small {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+}
+
 .icon-btn.active,
 .circle-btn:hover,
 .icon-btn:hover {
@@ -528,6 +534,28 @@ button {
   word-break: break-all;
 }
 
+.preview-snippet-card {
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.preview-snippet-card span {
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 12px;
+}
+
+.preview-snippet-card pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .action-dock {
   display: flex;
   gap: 10px;
@@ -727,9 +755,116 @@ button {
   color: rgba(255, 255, 255, 0.52);
 }
 
+.clipboard-page {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
+  gap: 16px;
+}
+
+.clipboard-list-card,
+.clipboard-preview-card {
+  border-radius: 22px;
+  padding: 18px;
+  background: rgba(68, 68, 72, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.clipboard-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.clipboard-header-row h3 {
+  font-size: 20px;
+}
+
+.clipboard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.clipboard-item {
+  width: 100%;
+  text-align: left;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  color: white;
+  cursor: pointer;
+}
+
+.clipboard-item.active {
+  background: linear-gradient(180deg, #3d7cff, #2d66dd);
+}
+
+.clipboard-kind {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.74);
+  text-transform: uppercase;
+}
+
+.clipboard-item-title {
+  margin-top: 6px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.clipboard-item-preview {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.clipboard-fulltext {
+  margin-top: 18px;
+  min-height: 240px;
+  padding: 18px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.86);
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.8;
+}
+
+.clipboard-empty {
+  color: rgba(255, 255, 255, 0.5);
+  padding: 18px 8px;
+}
+
+.clipboard-empty.large {
+  padding: 48px 8px;
+}
+
+.clipboard-dock {
+  margin-top: 16px;
+}
+
 @media (max-width: 1280px) {
+  .clipboard-page,
+  .search-main-card,
+  .home-grid,
+  .home-info-columns,
+  .settings-page {
+    grid-template-columns: 1fr;
+  }
+
   .app-shell {
     width: 100%;
     border-radius: 0;
+  }
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    display: none;
   }
 }
