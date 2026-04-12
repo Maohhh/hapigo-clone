@@ -57,6 +57,19 @@ function formatDate(timestamp?: number) {
   return new Date(timestamp * 1000).toLocaleString("zh-CN", { hour12: false });
 }
 
+function resultSupportsOpen(result: SearchResult | null) {
+  if (!result || result.isActionable === false) return false;
+  return Boolean(result.path || result.type === "command" || result.type === "clipboard");
+}
+
+function resultPrimaryActionLabel(result: SearchResult | null) {
+  if (!result) return "打开";
+  if (result.type === "command") return "执行";
+  if (result.type === "calc") return "复制结果";
+  if (result.type === "clipboard") return "复制";
+  return "打开";
+}
+
 function makeClipboardItem(text: string, source = "text"): ClipboardHistoryItem | null {
   const trimmed = text.trim();
   if (!trimmed) return null;
@@ -218,8 +231,8 @@ function App() {
   }, [clipboardItems, clipboardQuery]);
   const selectedClipboardItem = filteredClipboardItems.find((item) => item.id === clipboardSelectedId) ?? filteredClipboardItems[0] ?? null;
   const isCalcResult = selectedResult?.type === "calc";
-  const isCommandResult = selectedResult?.type === "command";
   const selectedResultActionable = Boolean(selectedResult && selectedResult.isActionable !== false);
+  const selectedResultOpenable = resultSupportsOpen(selectedResult);
 
   const setInfo = useCallback((text: string) => setStatusText(text), []);
 
@@ -690,6 +703,21 @@ function App() {
       });
       return;
     }
+    if (selectedResult.type === "clipboard" && selectedResult.command?.startsWith("clipboard-item:")) {
+      const itemId = selectedResult.command.slice("clipboard-item:".length);
+      const item = clipboardItems.find((entry) => entry.id === itemId);
+      setPreviewLoading(false);
+      setPreviewInfo({
+        path: "",
+        title: selectedResult.title,
+        kind: item?.kind ?? "clipboard",
+        parent: item?.pinned ? "剪贴板历史 / 已固定" : "剪贴板历史",
+        exists: Boolean(item),
+        isDir: false,
+        snippet: item?.full_text ?? selectedResult.subtitle ?? "回车或点击底部「复制」重新写入系统剪贴板。",
+      });
+      return;
+    }
     if (!selectedResult.path) {
       setPreviewInfo(null);
       return;
@@ -712,7 +740,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [activeTab, selectedResult]);
+  }, [activeTab, clipboardItems, selectedResult]);
 
   const searchSummary = useMemo(() => {
     if (!query.trim()) return "输入关键词搜索，或用 =1+2 进入计算模式";
@@ -861,11 +889,11 @@ function App() {
               </div>
 
               <div className="action-dock">
-                <button className="dock-btn primary" onClick={isCalcResult ? handleCopyResultContent : handleOpenSelected} disabled={(!selectedResult?.path && !isCommandResult && !isCalcResult)}>1 {isCommandResult ? "执行" : isCalcResult ? "复制结果" : "打开"}</button>
-                <button className="dock-btn" onClick={handleCopyResultContent} disabled={!selectedResult}>2 复制内容</button>
+                <button className="dock-btn primary" onClick={isCalcResult ? handleCopyResultContent : handleOpenSelected} disabled={!selectedResultOpenable && !isCalcResult}>1 {resultPrimaryActionLabel(selectedResult)}</button>
+                <button className="dock-btn" onClick={handleCopyResultContent} disabled={!selectedResultActionable}>2 复制内容</button>
                 <button className="dock-btn" onClick={handleRevealSelected} disabled={!selectedResult?.path || isCalcResult}>3 访达显示</button>
                 <button className="dock-btn" onClick={handleCopyPath} disabled={!selectedResult?.path || isCalcResult}>4 复制路径</button>
-                <button className="dock-btn" onClick={handleShareSelected} disabled={!selectedResult}>5 分享</button>
+                <button className="dock-btn" onClick={handleShareSelected} disabled={!selectedResultActionable}>5 分享</button>
               </div>
 
               <div className="status-bar">
