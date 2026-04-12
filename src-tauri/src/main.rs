@@ -18,6 +18,7 @@ struct SearchResult {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct PreviewInfo {
     path: String,
     title: String,
@@ -69,6 +70,34 @@ fn spotlight_search(query: String, limit: Option<usize>) -> Result<Vec<SearchRes
 #[tauri::command]
 fn open_path(path: String) -> Result<(), String> {
     open_path_with_system(&path)
+}
+
+#[tauri::command]
+fn reveal_path(path: String) -> Result<(), String> {
+    reveal_path_with_system(&path)
+}
+
+#[tauri::command]
+fn copy_text_to_clipboard(text: String) -> Result<(), String> {
+    write_clipboard_text(&text)
+}
+
+#[tauri::command]
+fn copy_path_to_clipboard(path: String) -> Result<(), String> {
+    let path = path.trim();
+    if path.is_empty() {
+        return Err("没有可复制的路径".to_string());
+    }
+
+    write_clipboard_text(path)
+}
+
+#[tauri::command]
+fn copy_file_content_to_clipboard(path: String) -> Result<usize, String> {
+    let content = file_content_for_clipboard(&path)?;
+    let char_count = content.chars().count();
+    write_clipboard_text(&content)?;
+    Ok(char_count)
 }
 
 #[tauri::command]
@@ -550,6 +579,93 @@ fn open_path_with_system(_path: &str) -> Result<(), String> {
     Err("Opening files is only supported on macOS and Windows".to_string())
 }
 
+#[cfg(target_os = "macos")]
+fn reveal_path_with_system(path: &str) -> Result<(), String> {
+    use std::process::Command;
+
+    let path = path.trim();
+    if path.is_empty() {
+        return Err("No path provided".to_string());
+    }
+
+    let output = Command::new("open")
+        .args(["-R", path])
+        .output()
+        .map_err(|error| format!("Failed to reveal path: {error}"))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let message = if stderr.is_empty() {
+            format!("Reveal failed with status {}", output.status)
+        } else {
+            format!("Reveal failed: {stderr}")
+        };
+        Err(message)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn reveal_path_with_system(path: &str) -> Result<(), String> {
+    use std::process::Command;
+
+    let path = path.trim();
+    if path.is_empty() {
+        return Err("No path provided".to_string());
+    }
+
+    let output = Command::new("explorer")
+        .arg(format!("/select,{path}"))
+        .output()
+        .map_err(|error| format!("Failed to reveal path: {error}"))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let message = if stderr.is_empty() {
+            format!("Reveal failed with status {}", output.status)
+        } else {
+            format!("Reveal failed: {stderr}")
+        };
+        Err(message)
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn reveal_path_with_system(_path: &str) -> Result<(), String> {
+    Err("Reveal in file manager is only supported on macOS and Windows".to_string())
+}
+
+fn write_clipboard_text(text: &str) -> Result<(), String> {
+    use arboard::Clipboard;
+
+    let mut clipboard = Clipboard::new().map_err(|e| format!("无法访问剪贴板: {}", e))?;
+    clipboard
+        .set_text(text.to_string())
+        .map_err(|e| format!("写入剪贴板失败: {}", e))
+}
+
+fn file_content_for_clipboard(path: &str) -> Result<String, String> {
+    const MAX_COPY_BYTES: u64 = 1024 * 1024;
+
+    let path = PathBuf::from(path.trim());
+    if path.as_os_str().is_empty() {
+        return Err("没有可复制内容的路径".to_string());
+    }
+
+    let metadata = std::fs::metadata(&path).map_err(|e| format!("读取文件信息失败: {e}"))?;
+    if !metadata.is_file() {
+        return Err("当前结果不是可复制内容的文件".to_string());
+    }
+    if metadata.len() > MAX_COPY_BYTES {
+        return Err("文件超过 1 MB，暂不直接复制内容".to_string());
+    }
+
+    std::fs::read_to_string(&path).map_err(|e| format!("读取文本内容失败: {e}"))
+}
+
 fn search_result_from_path(path: &str) -> SearchResult {
     let path_ref = Path::new(path);
     let title = path_ref
@@ -869,6 +985,10 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             spotlight_search,
             open_path,
+            reveal_path,
+            copy_text_to_clipboard,
+            copy_path_to_clipboard,
+            copy_file_content_to_clipboard,
             translate_text,
             capture_screen,
             capture_screen_text,
