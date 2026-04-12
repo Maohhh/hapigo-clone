@@ -20,6 +20,19 @@ const sidebarTabs: { id: NavTab; label: string; icon: string }[] = [
   { id: "settings", label: "设置", icon: "⚙" },
 ];
 
+const commandCatalog: SearchResult[] = [
+  { id: "command-search", type: "command", title: "打开搜索", subtitle: "/search - 回到搜索工作台", icon: "⌕", command: "search" },
+  { id: "command-translate", type: "command", title: "打开翻译", subtitle: "/translate - 进入速译工作台", icon: "文", command: "translate" },
+  { id: "command-clipboard", type: "command", title: "打开剪贴板", subtitle: "/clipboard - 查看最近复制内容", icon: "⧉", command: "clipboard" },
+  { id: "command-settings", type: "command", title: "打开设置", subtitle: "/settings - 查看快捷键、集成与行为", icon: "⚙", command: "settings" },
+  { id: "command-home", type: "command", title: "回到主页", subtitle: "/home - 查看模块入口与状态", icon: "◫", command: "home" },
+  { id: "command-pin", type: "command", title: "切换置顶", subtitle: "/pin - 标记窗口置顶偏好", icon: "📌", command: "pin" },
+  { id: "command-refresh-clipboard", type: "command", title: "刷新剪贴板", subtitle: "/refresh clipboard - 读取当前系统剪贴板", icon: "↻", command: "refresh-clipboard" },
+  { id: "command-help", type: "command", title: "查看可用命令", subtitle: "/help - 显示搜索、翻译、剪贴板、设置命令", icon: "?", command: "help" },
+];
+
+const clipboardStorageKey = "hapigo-clone.clipboard-history.v1";
+
 function formatSize(bytes?: number) {
   if (!bytes && bytes !== 0) return "-";
   if (bytes < 1024) return `${bytes} B`;
@@ -30,6 +43,35 @@ function formatSize(bytes?: number) {
 function formatDate(timestamp?: number) {
   if (!timestamp) return "-";
   return new Date(timestamp * 1000).toLocaleString("zh-CN", { hour12: false });
+}
+
+function makeClipboardItem(text: string, source = "text"): ClipboardHistoryItem | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const shortPreview = trimmed.slice(0, 120);
+  const title = trimmed.length > 28 ? `${trimmed.slice(0, 28)}...` : trimmed;
+  return {
+    id: `clipboard-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    kind: trimmed.startsWith("http://") || trimmed.startsWith("https://") ? "link" : source,
+    title,
+    preview: shortPreview,
+    full_text: trimmed,
+  };
+}
+
+function loadStoredClipboardItems(): ClipboardHistoryItem[] {
+  try {
+    const raw = window.localStorage.getItem(clipboardStorageKey);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as ClipboardHistoryItem[];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.full_text?.trim()) : [];
+  } catch {
+    return [];
+  }
+}
+
+function storeClipboardItems(items: ClipboardHistoryItem[]) {
+  window.localStorage.setItem(clipboardStorageKey, JSON.stringify(items.slice(0, 40)));
 }
 
 function evaluateCalculation(input: string): string | null {
@@ -125,19 +167,40 @@ function App() {
   const selectedResult = results[selectedIndex] ?? null;
   const selectedClipboardItem = clipboardItems.find((item) => item.id === clipboardSelectedId) ?? clipboardItems[0] ?? null;
   const isCalcResult = selectedResult?.type === "calc";
+  const isCommandResult = selectedResult?.type === "command";
 
   const setInfo = useCallback((text: string) => setStatusText(text), []);
+
+  const rememberClipboardText = useCallback((text: string, source = "text") => {
+    const item = makeClipboardItem(text, source);
+    if (!item) return;
+
+    setClipboardItems((current) => {
+      const merged = [item, ...current.filter((entry) => entry.full_text !== item.full_text)].slice(0, 40);
+      storeClipboardItems(merged);
+      setClipboardSelectedId(item.id);
+      return merged;
+    });
+  }, []);
 
   const loadClipboardHistory = useCallback(async () => {
     setClipboardLoading(true);
     try {
-      const items = await invoke<ClipboardHistoryItem[]>("get_clipboard_history", { limit: 20 });
-      setClipboardItems(items);
-      setClipboardSelectedId(items[0]?.id ?? null);
+      const systemItems = await invoke<ClipboardHistoryItem[]>("get_clipboard_history", { limit: 5 });
+      const storedItems = loadStoredClipboardItems();
+      const merged = [...systemItems, ...storedItems].reduce<ClipboardHistoryItem[]>((items, item) => {
+        if (!item.full_text.trim() || items.some((existing) => existing.full_text === item.full_text)) return items;
+        items.push(item);
+        return items;
+      }, []).slice(0, 40);
+      setClipboardItems(merged);
+      setClipboardSelectedId((current) => current && merged.some((item) => item.id === current) ? current : merged[0]?.id ?? null);
+      storeClipboardItems(merged);
     } catch (error) {
       console.error("Failed to load clipboard history", error);
-      setClipboardItems([]);
-      setClipboardSelectedId(null);
+      const storedItems = loadStoredClipboardItems();
+      setClipboardItems(storedItems);
+      setClipboardSelectedId(storedItems[0]?.id ?? null);
     } finally {
       setClipboardLoading(false);
     }
@@ -150,6 +213,27 @@ function App() {
       setSelectedIndex(0);
       setPreviewInfo(null);
       setStatusText("开始输入以搜索应用、文件或命令...");
+      return;
+    }
+
+    if (input.trim().startsWith("/")) {
+      const commandQuery = input.trim().slice(1).trim().toLowerCase();
+      const commandResults = commandCatalog.filter((command) => {
+        if (!commandQuery) return true;
+        return `${command.command} ${command.title} ${command.subtitle}`.toLowerCase().includes(commandQuery);
+      });
+      setResults(commandResults);
+      setSelectedIndex(0);
+      setPreviewInfo({
+        path: "",
+        title: commandResults[0]?.title ?? "未找到命令",
+        kind: "command",
+        parent: "命令模式",
+        exists: commandResults.length > 0,
+        isDir: false,
+        snippet: commandResults.length > 0 ? "回车执行命令，或继续输入过滤命令。" : "可用命令：/search、/translate、/clipboard、/settings、/pin、/help",
+      });
+      setStatusText(commandResults.length > 0 ? `命令模式：${commandResults.length} 个可用命令` : "未找到匹配命令");
       return;
     }
 
@@ -171,6 +255,29 @@ function App() {
       return;
     }
 
+    if (input.trim().startsWith("=")) {
+      const expression = input.trim().slice(1).trim();
+      setResults([{
+        id: `calc-invalid-${expression}`,
+        type: "calc",
+        title: "无法计算",
+        subtitle: expression || "请输入数学表达式，例如 =12*(8+2)",
+        icon: "=",
+      }]);
+      setSelectedIndex(0);
+      setPreviewInfo({
+        path: "",
+        title: "计算表达式无效",
+        kind: "calculation",
+        parent: "命令 / 计算模式",
+        exists: false,
+        isDir: false,
+        snippet: "当前支持数字、括号和 + - * / 运算符。",
+      });
+      setStatusText("计算模式：表达式无效");
+      return;
+    }
+
     try {
       setStatusText("正在搜索...");
       const searchResults = await invoke<SearchResult[]>("spotlight_search", { query: input, limit: 20 });
@@ -186,9 +293,35 @@ function App() {
     }
   }, []);
 
+  const executeCommand = useCallback((command?: string) => {
+    if (!command) return;
+    if (command === "pin") {
+      setIsPinned((value) => !value);
+      setInfo("已切换置顶偏好");
+      return;
+    }
+    if (command === "refresh-clipboard") {
+      setActiveTab("clipboard");
+      void loadClipboardHistory();
+      setInfo("正在刷新剪贴板");
+      return;
+    }
+    if (command === "help") {
+      setInfo("可用命令：/search、/translate、/clipboard、/settings、/pin、/refresh clipboard");
+      return;
+    }
+    setActiveTab(command as NavTab);
+    setInfo(`已执行命令：/${command}`);
+  }, [loadClipboardHistory, setInfo]);
+
   const handleOpenResult = useCallback(async (index: number) => {
     const item = results[index];
-    if (!item?.path) return;
+    if (!item) return;
+    if (item.type === "command") {
+      executeCommand(item.command);
+      return;
+    }
+    if (!item.path) return;
     try {
       setInfo(`正在打开 ${item.title}...`);
       await invoke("open_path", { path: item.path });
@@ -197,7 +330,7 @@ function App() {
       console.error("Open failed", error);
       setInfo(`打开失败：${String(error)}`);
     }
-  }, [results, setInfo]);
+  }, [results, setInfo, executeCommand]);
 
   const handleRevealSelected = useCallback(async () => {
     if (!selectedResult?.path) return;
@@ -214,18 +347,20 @@ function App() {
     if (!selectedResult?.path) return;
     try {
       await invoke("copy_path_to_clipboard", { path: selectedResult.path });
+      rememberClipboardText(selectedResult.path, "path");
       setInfo("路径已复制到剪贴板");
     } catch (error) {
       console.error("Copy path failed", error);
       setInfo(`复制路径失败：${String(error)}`);
     }
-  }, [selectedResult, setInfo]);
+  }, [selectedResult, setInfo, rememberClipboardText]);
 
   const handleCopyResultContent = useCallback(async () => {
     if (!selectedResult) return;
     try {
       if (selectedResult.type === "calc") {
         await invoke("copy_text_to_clipboard", { text: selectedResult.title });
+        rememberClipboardText(selectedResult.title, "calculation");
         setInfo("计算结果已复制");
         return;
       }
@@ -237,18 +372,37 @@ function App() {
       console.error("Copy content failed", error);
       setInfo(`复制内容失败：${String(error)}`);
     }
-  }, [selectedResult, setInfo]);
+  }, [selectedResult, setInfo, rememberClipboardText]);
 
   const handleCopyClipboardItem = useCallback(async () => {
     if (!selectedClipboardItem) return;
     try {
       await invoke("copy_text_to_clipboard", { text: selectedClipboardItem.full_text });
+      rememberClipboardText(selectedClipboardItem.full_text, selectedClipboardItem.kind);
       setInfo("剪贴板条目已重新复制");
     } catch (error) {
       console.error("Copy clipboard item failed", error);
       setInfo(`复制失败：${String(error)}`);
     }
-  }, [selectedClipboardItem, setInfo]);
+  }, [selectedClipboardItem, setInfo, rememberClipboardText]);
+
+  const handleShareSelected = useCallback(async () => {
+    if (!selectedResult) return;
+    const shareText = selectedResult.path || selectedResult.title;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: selectedResult.title, text: shareText });
+        setInfo("已打开系统分享");
+        return;
+      }
+      await invoke("copy_text_to_clipboard", { text: shareText });
+      rememberClipboardText(shareText, "share");
+      setInfo("当前环境不支持系统分享，已复制可分享内容");
+    } catch (error) {
+      console.error("Share failed", error);
+      setInfo(`分享失败：${String(error)}`);
+    }
+  }, [selectedResult, setInfo, rememberClipboardText]);
 
   const handleOpenSelected = useCallback(() => {
     void handleOpenResult(selectedIndex);
@@ -270,8 +424,15 @@ function App() {
     } else if (e.key === "Enter" && results[selectedIndex] && !isCalcResult) {
       e.preventDefault();
       handleOpenSelected();
+    } else if (["1", "2", "3", "4", "5"].includes(e.key) && results[selectedIndex]) {
+      e.preventDefault();
+      if (e.key === "1") handleOpenSelected();
+      if (e.key === "2") void handleCopyResultContent();
+      if (e.key === "3") void handleRevealSelected();
+      if (e.key === "4") void handleCopyPath();
+      if (e.key === "5") void handleShareSelected();
     }
-  }, [activeTab, results, selectedIndex, handleOpenSelected, isCalcResult]);
+  }, [activeTab, results, selectedIndex, handleOpenSelected, isCalcResult, handleCopyResultContent, handleRevealSelected, handleCopyPath, handleShareSelected]);
 
   useEffect(() => {
     window.addEventListener("keydown", handleKeyDown);
@@ -289,6 +450,19 @@ function App() {
       return;
     }
     if (selectedResult.type === "calc") return;
+    if (selectedResult.type === "command") {
+      setPreviewLoading(false);
+      setPreviewInfo({
+        path: "",
+        title: selectedResult.title,
+        kind: "command",
+        parent: "命令模式",
+        exists: true,
+        isDir: false,
+        snippet: `${selectedResult.subtitle || ""}\n回车或点击底部「执行」运行。`.trim(),
+      });
+      return;
+    }
     if (!selectedResult.path) {
       setPreviewInfo(null);
       return;
@@ -460,11 +634,11 @@ function App() {
               </div>
 
               <div className="action-dock">
-                <button className="dock-btn primary" onClick={handleOpenSelected} disabled={!selectedResult?.path || isCalcResult}>1 打开</button>
+                <button className="dock-btn primary" onClick={handleOpenSelected} disabled={(!selectedResult?.path && !isCommandResult) || isCalcResult}>1 {isCommandResult ? "执行" : "打开"}</button>
                 <button className="dock-btn" onClick={handleCopyResultContent} disabled={!selectedResult}>2 复制内容</button>
                 <button className="dock-btn" onClick={handleRevealSelected} disabled={!selectedResult?.path || isCalcResult}>3 访达显示</button>
                 <button className="dock-btn" onClick={handleCopyPath} disabled={!selectedResult?.path || isCalcResult}>4 复制路径</button>
-                <button className="dock-btn disabled">5 更多</button>
+                <button className="dock-btn" onClick={handleShareSelected} disabled={!selectedResult}>5 分享</button>
               </div>
 
               <div className="status-bar">

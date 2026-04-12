@@ -2,11 +2,12 @@ export type NavTab = "home" | "search" | "translate" | "clipboard" | "settings";
 
 export interface SearchResult {
   id: string;
-  type: "app" | "file" | "calc" | "web" | "clipboard";
+  type: "app" | "file" | "calc" | "web" | "clipboard" | "command";
   title: string;
   subtitle?: string;
   icon?: string;
   path?: string;
+  command?: string;
   action?: () => void;
 }
 
