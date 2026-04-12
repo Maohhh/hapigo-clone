@@ -38,3 +38,12 @@ export interface HomeShortcut {
   icon: string;
   badge: string;
 }
+
+export interface AppSettings {
+  launchAtLogin: boolean;
+  keepOnTop: boolean;
+  autoHideAfterOpen: boolean;
+  clipboardHistoryEnabled: boolean;
+  theme: "system" | "dark";
+  searchLimit: number;
+}

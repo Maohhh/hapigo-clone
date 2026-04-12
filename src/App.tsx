@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
+import { appWindow } from "@tauri-apps/api/window";
 import SearchBox from "./components/SearchBox";
 import ResultList from "./components/ResultList";
 import TranslatePanel from "./components/TranslatePanel";
-import { ClipboardHistoryItem, HomeShortcut, NavTab, PreviewInfo, SearchResult } from "./types";
+import { AppSettings, ClipboardHistoryItem, HomeShortcut, NavTab, PreviewInfo, SearchResult } from "./types";
 
 const homeShortcuts: HomeShortcut[] = [
   { id: "search", title: "搜索", subtitle: "即时搜索应用、文件与内容", icon: "⌘", badge: "核心" },
@@ -32,6 +33,16 @@ const commandCatalog: SearchResult[] = [
 ];
 
 const clipboardStorageKey = "hapigo-clone.clipboard-history.v1";
+const settingsStorageKey = "hapigo-clone.settings.v1";
+
+const defaultSettings: AppSettings = {
+  launchAtLogin: false,
+  keepOnTop: false,
+  autoHideAfterOpen: false,
+  clipboardHistoryEnabled: true,
+  theme: "dark",
+  searchLimit: 20,
+};
 
 function formatSize(bytes?: number) {
   if (!bytes && bytes !== 0) return "-";
@@ -72,6 +83,20 @@ function loadStoredClipboardItems(): ClipboardHistoryItem[] {
 
 function storeClipboardItems(items: ClipboardHistoryItem[]) {
   window.localStorage.setItem(clipboardStorageKey, JSON.stringify(items.slice(0, 40)));
+}
+
+function loadStoredSettings(): AppSettings {
+  try {
+    const raw = window.localStorage.getItem(settingsStorageKey);
+    if (!raw) return defaultSettings;
+    return { ...defaultSettings, ...JSON.parse(raw) };
+  } catch {
+    return defaultSettings;
+  }
+}
+
+function storeSettings(settings: AppSettings) {
+  window.localStorage.setItem(settingsStorageKey, JSON.stringify(settings));
 }
 
 function evaluateCalculation(input: string): string | null {
@@ -163,6 +188,7 @@ function App() {
   const [clipboardItems, setClipboardItems] = useState<ClipboardHistoryItem[]>([]);
   const [clipboardLoading, setClipboardLoading] = useState(false);
   const [clipboardSelectedId, setClipboardSelectedId] = useState<string | null>(null);
+  const [settings, setSettings] = useState<AppSettings>(() => loadStoredSettings());
 
   const selectedResult = results[selectedIndex] ?? null;
   const selectedClipboardItem = clipboardItems.find((item) => item.id === clipboardSelectedId) ?? clipboardItems[0] ?? null;
@@ -171,7 +197,28 @@ function App() {
 
   const setInfo = useCallback((text: string) => setStatusText(text), []);
 
+  const updateSettings = useCallback((patch: Partial<AppSettings>) => {
+    setSettings((current) => {
+      const next = { ...current, ...patch };
+      storeSettings(next);
+      return next;
+    });
+  }, []);
+
+  const setPinned = useCallback(async (nextPinned: boolean) => {
+    setIsPinned(nextPinned);
+    updateSettings({ keepOnTop: nextPinned });
+    try {
+      await appWindow.setAlwaysOnTop(nextPinned);
+      setInfo(nextPinned ? "窗口已置顶" : "窗口已取消置顶");
+    } catch (error) {
+      console.error("Failed to toggle always on top", error);
+      setInfo(`置顶切换失败：${String(error)}`);
+    }
+  }, [setInfo, updateSettings]);
+
   const rememberClipboardText = useCallback((text: string, source = "text") => {
+    if (!settings.clipboardHistoryEnabled) return;
     const item = makeClipboardItem(text, source);
     if (!item) return;
 
@@ -181,13 +228,15 @@ function App() {
       setClipboardSelectedId(item.id);
       return merged;
     });
-  }, []);
+  }, [settings.clipboardHistoryEnabled]);
 
   const loadClipboardHistory = useCallback(async () => {
     setClipboardLoading(true);
     try {
-      const systemItems = await invoke<ClipboardHistoryItem[]>("get_clipboard_history", { limit: 5 });
-      const storedItems = loadStoredClipboardItems();
+      const systemItems = settings.clipboardHistoryEnabled
+        ? await invoke<ClipboardHistoryItem[]>("get_clipboard_history", { limit: 5 })
+        : [];
+      const storedItems = settings.clipboardHistoryEnabled ? loadStoredClipboardItems() : [];
       const merged = [...systemItems, ...storedItems].reduce<ClipboardHistoryItem[]>((items, item) => {
         if (!item.full_text.trim() || items.some((existing) => existing.full_text === item.full_text)) return items;
         items.push(item);
@@ -204,7 +253,7 @@ function App() {
     } finally {
       setClipboardLoading(false);
     }
-  }, []);
+  }, [settings.clipboardHistoryEnabled]);
 
   const handleSearch = useCallback(async (input: string) => {
     setQuery(input);
@@ -280,7 +329,7 @@ function App() {
 
     try {
       setStatusText("正在搜索...");
-      const searchResults = await invoke<SearchResult[]>("spotlight_search", { query: input, limit: 20 });
+      const searchResults = await invoke<SearchResult[]>("spotlight_search", { query: input, limit: settings.searchLimit });
       setResults(searchResults);
       setSelectedIndex(0);
       setStatusText(searchResults.length > 0 ? `已找到 ${searchResults.length} 个结果` : "未找到结果");
@@ -291,13 +340,12 @@ function App() {
       setPreviewInfo(null);
       setStatusText(`搜索失败：${String(error)}`);
     }
-  }, []);
+  }, [settings.searchLimit]);
 
   const executeCommand = useCallback((command?: string) => {
     if (!command) return;
     if (command === "pin") {
-      setIsPinned((value) => !value);
-      setInfo("已切换置顶偏好");
+      void setPinned(!isPinned);
       return;
     }
     if (command === "refresh-clipboard") {
@@ -307,12 +355,18 @@ function App() {
       return;
     }
     if (command === "help") {
+      setActiveTab("search");
+      setQuery("/");
+      setResults(commandCatalog);
+      setSelectedIndex(0);
       setInfo("可用命令：/search、/translate、/clipboard、/settings、/pin、/refresh clipboard");
       return;
     }
-    setActiveTab(command as NavTab);
-    setInfo(`已执行命令：/${command}`);
-  }, [loadClipboardHistory, setInfo]);
+    if (["home", "search", "translate", "clipboard", "settings"].includes(command)) {
+      setActiveTab(command as NavTab);
+      setInfo(`已执行命令：/${command}`);
+    }
+  }, [isPinned, loadClipboardHistory, setInfo, setPinned]);
 
   const handleOpenResult = useCallback(async (index: number) => {
     const item = results[index];
@@ -326,11 +380,14 @@ function App() {
       setInfo(`正在打开 ${item.title}...`);
       await invoke("open_path", { path: item.path });
       setInfo(`已打开 ${item.title}`);
+      if (settings.autoHideAfterOpen) {
+        await appWindow.hide();
+      }
     } catch (error) {
       console.error("Open failed", error);
       setInfo(`打开失败：${String(error)}`);
     }
-  }, [results, setInfo, executeCommand]);
+  }, [results, setInfo, executeCommand, settings.autoHideAfterOpen]);
 
   const handleRevealSelected = useCallback(async () => {
     if (!selectedResult?.path) return;
@@ -364,10 +421,21 @@ function App() {
         setInfo("计算结果已复制");
         return;
       }
+      if (selectedResult.type === "command") {
+        const commandText = selectedResult.command ? `/${selectedResult.command}` : selectedResult.title;
+        await invoke("copy_text_to_clipboard", { text: commandText });
+        rememberClipboardText(commandText, "command");
+        setInfo("命令已复制");
+        return;
+      }
       if (selectedResult.path) {
         const copiedChars = await invoke<number>("copy_file_content_to_clipboard", { path: selectedResult.path });
         setInfo(`已复制文件内容，约 ${copiedChars} 个字符`);
+        return;
       }
+      await invoke("copy_text_to_clipboard", { text: selectedResult.title });
+      rememberClipboardText(selectedResult.title, selectedResult.type);
+      setInfo("结果文本已复制");
     } catch (error) {
       console.error("Copy content failed", error);
       setInfo(`复制内容失败：${String(error)}`);
@@ -386,9 +454,27 @@ function App() {
     }
   }, [selectedClipboardItem, setInfo, rememberClipboardText]);
 
+  const handleDeleteClipboardItem = useCallback(() => {
+    if (!selectedClipboardItem) return;
+    setClipboardItems((current) => {
+      const next = current.filter((item) => item.id !== selectedClipboardItem.id);
+      storeClipboardItems(next);
+      setClipboardSelectedId(next[0]?.id ?? null);
+      return next;
+    });
+    setInfo("剪贴板条目已移除");
+  }, [selectedClipboardItem, setInfo]);
+
+  const handleClearClipboardHistory = useCallback(() => {
+    setClipboardItems([]);
+    setClipboardSelectedId(null);
+    storeClipboardItems([]);
+    setInfo("本地剪贴板历史已清空");
+  }, [setInfo]);
+
   const handleShareSelected = useCallback(async () => {
     if (!selectedResult) return;
-    const shareText = selectedResult.path || selectedResult.title;
+    const shareText = selectedResult.command ? `/${selectedResult.command}` : selectedResult.path || selectedResult.title;
     try {
       if (navigator.share) {
         await navigator.share({ title: selectedResult.title, text: shareText });
@@ -421,9 +507,10 @@ function App() {
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setSelectedIndex((prev) => Math.max(prev - 1, 0));
-    } else if (e.key === "Enter" && results[selectedIndex] && !isCalcResult) {
+    } else if (e.key === "Enter" && results[selectedIndex]) {
       e.preventDefault();
-      handleOpenSelected();
+      if (isCalcResult) void handleCopyResultContent();
+      else handleOpenSelected();
     } else if (["1", "2", "3", "4", "5"].includes(e.key) && results[selectedIndex]) {
       e.preventDefault();
       if (e.key === "1") handleOpenSelected();
@@ -442,6 +529,13 @@ function App() {
   useEffect(() => {
     if (activeTab === "clipboard") void loadClipboardHistory();
   }, [activeTab, loadClipboardHistory]);
+
+  useEffect(() => {
+    setIsPinned(settings.keepOnTop);
+    void appWindow.setAlwaysOnTop(settings.keepOnTop).catch((error) => {
+      console.error("Failed to restore always on top setting", error);
+    });
+  }, [settings.keepOnTop]);
 
   useEffect(() => {
     if (activeTab !== "search") return;
@@ -542,7 +636,7 @@ function App() {
           <div className="topbar-actions">
             <button className="icon-btn">≡</button>
             <button className="icon-btn">⏸</button>
-            <button className={`icon-btn ${isPinned ? "active" : ""}`} onClick={() => setIsPinned((v) => !v)}>📌</button>
+            <button className={`icon-btn ${isPinned ? "active" : ""}`} onClick={() => void setPinned(!isPinned)}>📌</button>
             <button className="icon-btn" onClick={() => setActiveTab("settings")}>⚙</button>
           </div>
         </header>
@@ -634,7 +728,7 @@ function App() {
               </div>
 
               <div className="action-dock">
-                <button className="dock-btn primary" onClick={handleOpenSelected} disabled={(!selectedResult?.path && !isCommandResult) || isCalcResult}>1 {isCommandResult ? "执行" : "打开"}</button>
+                <button className="dock-btn primary" onClick={isCalcResult ? handleCopyResultContent : handleOpenSelected} disabled={(!selectedResult?.path && !isCommandResult && !isCalcResult)}>1 {isCommandResult ? "执行" : isCalcResult ? "复制结果" : "打开"}</button>
                 <button className="dock-btn" onClick={handleCopyResultContent} disabled={!selectedResult}>2 复制内容</button>
                 <button className="dock-btn" onClick={handleRevealSelected} disabled={!selectedResult?.path || isCalcResult}>3 访达显示</button>
                 <button className="dock-btn" onClick={handleCopyPath} disabled={!selectedResult?.path || isCalcResult}>4 复制路径</button>
@@ -682,8 +776,9 @@ function App() {
                     <div className="clipboard-fulltext">{selectedClipboardItem.full_text}</div>
                     <div className="action-dock clipboard-dock">
                       <button className="dock-btn primary" onClick={handleCopyClipboardItem}>1 复制</button>
-                      <button className="dock-btn disabled">2 固定</button>
+                      <button className="dock-btn" onClick={handleDeleteClipboardItem}>2 移除</button>
                       <button className="dock-btn" onClick={() => void loadClipboardHistory()}>3 刷新</button>
+                      <button className="dock-btn" onClick={handleClearClipboardHistory}>4 清空</button>
                     </div>
                   </>
                 ) : (
@@ -695,10 +790,48 @@ function App() {
 
           {activeTab === "settings" && (
             <div className="settings-page">
-              <div className="settings-card"><h3>快捷键与行为</h3><p>预留全局呼出、自动隐藏、窗口置顶和启动行为配置。</p></div>
-              <div className="settings-card"><h3>搜索与命令</h3><p>当前已支持搜索与 =表达式 计算模式，后续扩展更多系统命令。</p></div>
-              <div className="settings-card"><h3>翻译与工具</h3><p>当前已支持截图翻译、划词翻译和结果复制，后续接入更真实翻译引擎。</p></div>
-              <div className="settings-card"><h3>集成能力</h3><p>后续将按优先级推进 Apple Notes、Shortcuts、1Password 等集成。</p></div>
+              <div className="settings-card">
+                <h3>窗口与启动</h3>
+                <div className="settings-row">
+                  <span>窗口置顶</span>
+                  <button className={`settings-toggle ${settings.keepOnTop ? "active" : ""}`} onClick={() => void setPinned(!settings.keepOnTop)}>{settings.keepOnTop ? "开启" : "关闭"}</button>
+                </div>
+                <div className="settings-row">
+                  <span>打开结果后自动隐藏</span>
+                  <button className={`settings-toggle ${settings.autoHideAfterOpen ? "active" : ""}`} onClick={() => updateSettings({ autoHideAfterOpen: !settings.autoHideAfterOpen })}>{settings.autoHideAfterOpen ? "开启" : "关闭"}</button>
+                </div>
+                <div className="settings-note">开机启动需要接入 Tauri autostart 插件后启用，当前保留配置入口。</div>
+              </div>
+              <div className="settings-card">
+                <h3>搜索与命令</h3>
+                <div className="settings-row">
+                  <span>每次搜索结果数</span>
+                  <select className="settings-select" value={settings.searchLimit} onChange={(event) => updateSettings({ searchLimit: Number(event.target.value) })}>
+                    {[10, 20, 40, 80].map((limit) => <option key={limit} value={limit}>{limit}</option>)}
+                  </select>
+                </div>
+                <div className="settings-note">命令模式支持 /search、/translate、/clipboard、/settings、/pin、/refresh clipboard。</div>
+              </div>
+              <div className="settings-card">
+                <h3>剪贴板</h3>
+                <div className="settings-row">
+                  <span>记录本地历史</span>
+                  <button className={`settings-toggle ${settings.clipboardHistoryEnabled ? "active" : ""}`} onClick={() => updateSettings({ clipboardHistoryEnabled: !settings.clipboardHistoryEnabled })}>{settings.clipboardHistoryEnabled ? "开启" : "关闭"}</button>
+                </div>
+                <button className="settings-action" onClick={() => void loadClipboardHistory()}>读取当前系统剪贴板</button>
+                <button className="settings-action danger" onClick={handleClearClipboardHistory}>清空本地历史</button>
+              </div>
+              <div className="settings-card">
+                <h3>翻译与集成</h3>
+                <div className="settings-row">
+                  <span>主题</span>
+                  <select className="settings-select" value={settings.theme} onChange={(event) => updateSettings({ theme: event.target.value as AppSettings["theme"] })}>
+                    <option value="dark">深色</option>
+                    <option value="system">跟随系统</option>
+                  </select>
+                </div>
+                <div className="settings-note">截图翻译、划词翻译、结果复制已连接；多翻译源和第三方应用集成保留入口。</div>
+              </div>
             </div>
           )}
         </section>

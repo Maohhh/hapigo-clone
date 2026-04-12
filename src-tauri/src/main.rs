@@ -938,13 +938,7 @@ async fn get_clipboard_history_items(limit: usize) -> Result<Vec<ClipboardHistor
         .get_text()
         .map_err(|e| format!("读取剪贴板失败: {}", e))?;
 
-    let seed_items = vec![
-        current_text,
-        "https://hapigo.com/".to_string(),
-        "另外，我再交代给你一个新的任务，那就是复刻 Hapigo。".to_string(),
-        "按下「空格」或「⌘ + J」搜索文件".to_string(),
-        "HapiGo 速译：输入待翻译文本并回车".to_string(),
-    ];
+    let seed_items = vec![current_text];
 
     let mut seen = HashSet::new();
     let mut items = Vec::new();
