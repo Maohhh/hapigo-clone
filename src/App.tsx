@@ -85,6 +85,14 @@ function storeClipboardItems(items: ClipboardHistoryItem[]) {
   window.localStorage.setItem(clipboardStorageKey, JSON.stringify(items.slice(0, 40)));
 }
 
+function mergeClipboardItems(items: ClipboardHistoryItem[]): ClipboardHistoryItem[] {
+  return items.reduce<ClipboardHistoryItem[]>((merged, item) => {
+    if (!item.full_text.trim() || merged.some((existing) => existing.full_text === item.full_text)) return merged;
+    merged.push(item);
+    return merged;
+  }, []).slice(0, 40);
+}
+
 function loadStoredSettings(): AppSettings {
   try {
     const raw = window.localStorage.getItem(settingsStorageKey);
@@ -237,11 +245,7 @@ function App() {
         ? await invoke<ClipboardHistoryItem[]>("get_clipboard_history", { limit: 5 })
         : [];
       const storedItems = settings.clipboardHistoryEnabled ? loadStoredClipboardItems() : [];
-      const merged = [...systemItems, ...storedItems].reduce<ClipboardHistoryItem[]>((items, item) => {
-        if (!item.full_text.trim() || items.some((existing) => existing.full_text === item.full_text)) return items;
-        items.push(item);
-        return items;
-      }, []).slice(0, 40);
+      const merged = mergeClipboardItems([...systemItems, ...storedItems]);
       setClipboardItems(merged);
       setClipboardSelectedId((current) => current && merged.some((item) => item.id === current) ? current : merged[0]?.id ?? null);
       storeClipboardItems(merged);
@@ -252,6 +256,22 @@ function App() {
       setClipboardSelectedId(storedItems[0]?.id ?? null);
     } finally {
       setClipboardLoading(false);
+    }
+  }, [settings.clipboardHistoryEnabled]);
+
+  const syncClipboardHistory = useCallback(async () => {
+    if (!settings.clipboardHistoryEnabled) return;
+    try {
+      const systemItems = await invoke<ClipboardHistoryItem[]>("get_clipboard_history", { limit: 5 });
+      if (systemItems.length === 0) return;
+      setClipboardItems((current) => {
+        const merged = mergeClipboardItems([...systemItems, ...current]);
+        storeClipboardItems(merged);
+        setClipboardSelectedId((selected) => selected && merged.some((item) => item.id === selected) ? selected : merged[0]?.id ?? null);
+        return merged;
+      });
+    } catch (error) {
+      console.error("Failed to sync clipboard history", error);
     }
   }, [settings.clipboardHistoryEnabled]);
 
@@ -312,6 +332,7 @@ function App() {
         title: "无法计算",
         subtitle: expression || "请输入数学表达式，例如 =12*(8+2)",
         icon: "=",
+        isActionable: false,
       }]);
       setSelectedIndex(0);
       setPreviewInfo({
@@ -375,6 +396,7 @@ function App() {
       executeCommand(item.command);
       return;
     }
+    if (item.isActionable === false) return;
     if (!item.path) return;
     try {
       setInfo(`正在打开 ${item.title}...`);
@@ -414,6 +436,10 @@ function App() {
 
   const handleCopyResultContent = useCallback(async () => {
     if (!selectedResult) return;
+    if (selectedResult.isActionable === false) {
+      setInfo("当前结果不可执行，请修正输入后再试");
+      return;
+    }
     try {
       if (selectedResult.type === "calc") {
         await invoke("copy_text_to_clipboard", { text: selectedResult.title });
@@ -474,6 +500,10 @@ function App() {
 
   const handleShareSelected = useCallback(async () => {
     if (!selectedResult) return;
+    if (selectedResult.isActionable === false) {
+      setInfo("当前结果不可分享，请修正输入后再试");
+      return;
+    }
     const shareText = selectedResult.command ? `/${selectedResult.command}` : selectedResult.path || selectedResult.title;
     try {
       if (navigator.share) {
@@ -513,11 +543,12 @@ function App() {
       else handleOpenSelected();
     } else if (["1", "2", "3", "4", "5"].includes(e.key) && results[selectedIndex]) {
       e.preventDefault();
-      if (e.key === "1") handleOpenSelected();
-      if (e.key === "2") void handleCopyResultContent();
+      const isActionable = results[selectedIndex].isActionable !== false;
+      if (e.key === "1" && isActionable) handleOpenSelected();
+      if (e.key === "2" && isActionable) void handleCopyResultContent();
       if (e.key === "3") void handleRevealSelected();
       if (e.key === "4") void handleCopyPath();
-      if (e.key === "5") void handleShareSelected();
+      if (e.key === "5" && isActionable) void handleShareSelected();
     }
   }, [activeTab, results, selectedIndex, handleOpenSelected, isCalcResult, handleCopyResultContent, handleRevealSelected, handleCopyPath, handleShareSelected]);
 
@@ -529,6 +560,12 @@ function App() {
   useEffect(() => {
     if (activeTab === "clipboard") void loadClipboardHistory();
   }, [activeTab, loadClipboardHistory]);
+
+  useEffect(() => {
+    if (activeTab !== "clipboard" || !settings.clipboardHistoryEnabled) return;
+    const intervalId = window.setInterval(() => void syncClipboardHistory(), 2000);
+    return () => window.clearInterval(intervalId);
+  }, [activeTab, settings.clipboardHistoryEnabled, syncClipboardHistory]);
 
   useEffect(() => {
     setIsPinned(settings.keepOnTop);

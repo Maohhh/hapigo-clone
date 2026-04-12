@@ -9,6 +9,7 @@ export interface SearchResult {
   path?: string;
   command?: string;
   action?: () => void;
+  isActionable?: boolean;
 }
 
 export interface PreviewInfo {
