@@ -83,6 +83,11 @@ fn copy_text_to_clipboard(text: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn clear_clipboard() -> Result<(), String> {
+    write_clipboard_text("")
+}
+
+#[tauri::command]
 fn copy_path_to_clipboard(path: String) -> Result<(), String> {
     let path = path.trim();
     if path.is_empty() {
@@ -981,6 +986,7 @@ fn main() {
             open_path,
             reveal_path,
             copy_text_to_clipboard,
+            clear_clipboard,
             copy_path_to_clipboard,
             copy_file_content_to_clipboard,
             translate_text,

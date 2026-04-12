@@ -29,6 +29,7 @@ const commandCatalog: SearchResult[] = [
   { id: "command-home", type: "command", title: "回到主页", subtitle: "/home - 查看模块入口与状态", icon: "◫", command: "home" },
   { id: "command-pin", type: "command", title: "切换置顶", subtitle: "/pin - 标记窗口置顶偏好", icon: "📌", command: "pin" },
   { id: "command-refresh-clipboard", type: "command", title: "刷新剪贴板", subtitle: "/refresh clipboard - 读取当前系统剪贴板", icon: "↻", command: "refresh-clipboard" },
+  { id: "command-clear-clipboard", type: "command", title: "清空系统剪贴板", subtitle: "/clear clipboard - 清空系统剪贴板并保留本地历史", icon: "⌫", command: "clear-clipboard" },
   { id: "command-help", type: "command", title: "查看可用命令", subtitle: "/help - 显示搜索、翻译、剪贴板、设置命令", icon: "?", command: "help" },
 ];
 
@@ -67,6 +68,7 @@ function makeClipboardItem(text: string, source = "text"): ClipboardHistoryItem 
     title,
     preview: shortPreview,
     full_text: trimmed,
+    createdAt: Date.now(),
   };
 }
 
@@ -86,11 +88,18 @@ function storeClipboardItems(items: ClipboardHistoryItem[]) {
 }
 
 function mergeClipboardItems(items: ClipboardHistoryItem[]): ClipboardHistoryItem[] {
-  return items.reduce<ClipboardHistoryItem[]>((merged, item) => {
-    if (!item.full_text.trim() || merged.some((existing) => existing.full_text === item.full_text)) return merged;
-    merged.push(item);
-    return merged;
-  }, []).slice(0, 40);
+  const byText = new Map<string, ClipboardHistoryItem>();
+  for (const item of items) {
+    const key = item.full_text.trim();
+    if (!key) continue;
+    const existing = byText.get(key);
+    byText.set(key, {
+      ...item,
+      pinned: Boolean(existing?.pinned || item.pinned),
+      createdAt: existing?.createdAt || item.createdAt || Date.now(),
+    });
+  }
+  return Array.from(byText.values()).sort((a, b) => Number(b.pinned) - Number(a.pinned)).slice(0, 40);
 }
 
 function loadStoredSettings(): AppSettings {
@@ -196,12 +205,21 @@ function App() {
   const [clipboardItems, setClipboardItems] = useState<ClipboardHistoryItem[]>([]);
   const [clipboardLoading, setClipboardLoading] = useState(false);
   const [clipboardSelectedId, setClipboardSelectedId] = useState<string | null>(null);
+  const [clipboardQuery, setClipboardQuery] = useState("");
   const [settings, setSettings] = useState<AppSettings>(() => loadStoredSettings());
 
   const selectedResult = results[selectedIndex] ?? null;
-  const selectedClipboardItem = clipboardItems.find((item) => item.id === clipboardSelectedId) ?? clipboardItems[0] ?? null;
+  const filteredClipboardItems = useMemo(() => {
+    const needle = clipboardQuery.trim().toLowerCase();
+    const source = needle
+      ? clipboardItems.filter((item) => `${item.title} ${item.preview} ${item.full_text}`.toLowerCase().includes(needle))
+      : clipboardItems;
+    return [...source].sort((a, b) => Number(b.pinned) - Number(a.pinned));
+  }, [clipboardItems, clipboardQuery]);
+  const selectedClipboardItem = filteredClipboardItems.find((item) => item.id === clipboardSelectedId) ?? filteredClipboardItems[0] ?? null;
   const isCalcResult = selectedResult?.type === "calc";
   const isCommandResult = selectedResult?.type === "command";
+  const selectedResultActionable = Boolean(selectedResult && selectedResult.isActionable !== false);
 
   const setInfo = useCallback((text: string) => setStatusText(text), []);
 
@@ -231,7 +249,8 @@ function App() {
     if (!item) return;
 
     setClipboardItems((current) => {
-      const merged = [item, ...current.filter((entry) => entry.full_text !== item.full_text)].slice(0, 40);
+      const existing = current.find((entry) => entry.full_text === item.full_text);
+      const merged = mergeClipboardItems([{ ...item, pinned: existing?.pinned }, ...current.filter((entry) => entry.full_text !== item.full_text)]);
       storeClipboardItems(merged);
       setClipboardSelectedId(item.id);
       return merged;
@@ -348,12 +367,24 @@ function App() {
       return;
     }
 
+    const clipboardMatches = clipboardItems
+      .filter((item) => `${item.title} ${item.preview} ${item.full_text}`.toLowerCase().includes(input.trim().toLowerCase()))
+      .slice(0, 5)
+      .map<SearchResult>((item) => ({
+        id: `clipboard-result-${item.id}`,
+        type: "clipboard",
+        title: item.title,
+        subtitle: `剪贴板 ${item.pinned ? "已固定 · " : ""}${item.preview}`,
+        icon: item.kind === "link" ? "🔗" : "⧉",
+        command: `clipboard-item:${item.id}`,
+      }));
+
     try {
       setStatusText("正在搜索...");
       const searchResults = await invoke<SearchResult[]>("spotlight_search", { query: input, limit: settings.searchLimit });
-      setResults(searchResults);
+      setResults([...clipboardMatches, ...searchResults]);
       setSelectedIndex(0);
-      setStatusText(searchResults.length > 0 ? `已找到 ${searchResults.length} 个结果` : "未找到结果");
+      setStatusText(searchResults.length + clipboardMatches.length > 0 ? `已找到 ${searchResults.length + clipboardMatches.length} 个结果` : "未找到结果");
     } catch (error) {
       console.error("Search failed", error);
       setResults([]);
@@ -361,10 +392,37 @@ function App() {
       setPreviewInfo(null);
       setStatusText(`搜索失败：${String(error)}`);
     }
-  }, [settings.searchLimit]);
+  }, [clipboardItems, settings.searchLimit]);
+
+  const handleClearSystemClipboard = useCallback(async () => {
+    try {
+      await invoke("clear_clipboard");
+      setInfo("系统剪贴板已清空，本地历史仍保留");
+    } catch (error) {
+      console.error("Clear clipboard failed", error);
+      setInfo(`清空系统剪贴板失败：${String(error)}`);
+    }
+  }, [setInfo]);
+
+  const copyClipboardItemById = useCallback(async (itemId: string) => {
+    const item = clipboardItems.find((entry) => entry.id === itemId);
+    if (!item) return;
+    try {
+      await invoke("copy_text_to_clipboard", { text: item.full_text });
+      rememberClipboardText(item.full_text, item.kind);
+      setInfo("剪贴板条目已复制");
+    } catch (error) {
+      console.error("Copy clipboard search result failed", error);
+      setInfo(`复制剪贴板条目失败：${String(error)}`);
+    }
+  }, [clipboardItems, rememberClipboardText, setInfo]);
 
   const executeCommand = useCallback((command?: string) => {
     if (!command) return;
+    if (command.startsWith("clipboard-item:")) {
+      void copyClipboardItemById(command.slice("clipboard-item:".length));
+      return;
+    }
     if (command === "pin") {
       void setPinned(!isPinned);
       return;
@@ -375,24 +433,32 @@ function App() {
       setInfo("正在刷新剪贴板");
       return;
     }
+    if (command === "clear-clipboard") {
+      void handleClearSystemClipboard();
+      return;
+    }
     if (command === "help") {
       setActiveTab("search");
       setQuery("/");
       setResults(commandCatalog);
       setSelectedIndex(0);
-      setInfo("可用命令：/search、/translate、/clipboard、/settings、/pin、/refresh clipboard");
+      setInfo("可用命令：/search、/translate、/clipboard、/settings、/pin、/refresh clipboard、/clear clipboard");
       return;
     }
     if (["home", "search", "translate", "clipboard", "settings"].includes(command)) {
       setActiveTab(command as NavTab);
       setInfo(`已执行命令：/${command}`);
     }
-  }, [isPinned, loadClipboardHistory, setInfo, setPinned]);
+  }, [copyClipboardItemById, handleClearSystemClipboard, isPinned, loadClipboardHistory, setInfo, setPinned]);
 
   const handleOpenResult = useCallback(async (index: number) => {
     const item = results[index];
     if (!item) return;
     if (item.type === "command") {
+      executeCommand(item.command);
+      return;
+    }
+    if (item.type === "clipboard" && item.command?.startsWith("clipboard-item:")) {
       executeCommand(item.command);
       return;
     }
@@ -454,6 +520,10 @@ function App() {
         setInfo("命令已复制");
         return;
       }
+      if (selectedResult.type === "clipboard" && selectedResult.command?.startsWith("clipboard-item:")) {
+        await copyClipboardItemById(selectedResult.command.slice("clipboard-item:".length));
+        return;
+      }
       if (selectedResult.path) {
         const copiedChars = await invoke<number>("copy_file_content_to_clipboard", { path: selectedResult.path });
         setInfo(`已复制文件内容，约 ${copiedChars} 个字符`);
@@ -466,7 +536,7 @@ function App() {
       console.error("Copy content failed", error);
       setInfo(`复制内容失败：${String(error)}`);
     }
-  }, [selectedResult, setInfo, rememberClipboardText]);
+  }, [copyClipboardItemById, selectedResult, setInfo, rememberClipboardText]);
 
   const handleCopyClipboardItem = useCallback(async () => {
     if (!selectedClipboardItem) return;
@@ -485,10 +555,23 @@ function App() {
     setClipboardItems((current) => {
       const next = current.filter((item) => item.id !== selectedClipboardItem.id);
       storeClipboardItems(next);
-      setClipboardSelectedId(next[0]?.id ?? null);
+      const nextVisible = clipboardQuery.trim()
+        ? next.filter((item) => `${item.title} ${item.preview} ${item.full_text}`.toLowerCase().includes(clipboardQuery.trim().toLowerCase()))
+        : next;
+      setClipboardSelectedId(nextVisible[0]?.id ?? next[0]?.id ?? null);
       return next;
     });
     setInfo("剪贴板条目已移除");
+  }, [clipboardQuery, selectedClipboardItem, setInfo]);
+
+  const handleToggleClipboardPin = useCallback(() => {
+    if (!selectedClipboardItem) return;
+    setClipboardItems((current) => {
+      const next = current.map((item) => item.id === selectedClipboardItem.id ? { ...item, pinned: !item.pinned } : item);
+      storeClipboardItems(next);
+      return next;
+    });
+    setInfo(selectedClipboardItem.pinned ? "剪贴板条目已取消固定" : "剪贴板条目已固定");
   }, [selectedClipboardItem, setInfo]);
 
   const handleClearClipboardHistory = useCallback(() => {
@@ -497,6 +580,19 @@ function App() {
     storeClipboardItems([]);
     setInfo("本地剪贴板历史已清空");
   }, [setInfo]);
+
+  const handleUseClipboardInSearch = useCallback(() => {
+    if (!selectedClipboardItem) return;
+    setActiveTab("search");
+    void handleSearch(selectedClipboardItem.full_text);
+    setInfo("已将剪贴板内容送入搜索");
+  }, [handleSearch, selectedClipboardItem, setInfo]);
+
+  const handleUseClipboardInTranslate = useCallback(() => {
+    if (!selectedClipboardItem) return;
+    setActiveTab("translate");
+    setInfo("已选择剪贴板内容，可在翻译页粘贴使用");
+  }, [selectedClipboardItem, setInfo]);
 
   const handleShareSelected = useCallback(async () => {
     if (!selectedResult) return;

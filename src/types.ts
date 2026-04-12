@@ -30,6 +30,8 @@ export interface ClipboardHistoryItem {
   title: string;
   preview: string;
   full_text: string;
+  pinned?: boolean;
+  createdAt?: number;
 }
 
 export interface HomeShortcut {
