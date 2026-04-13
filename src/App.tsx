@@ -43,6 +43,10 @@ const defaultSettings: AppSettings = {
   clipboardHistoryEnabled: true,
   theme: "dark",
   searchLimit: 20,
+  translateProvider: "auto",
+  translateTargetLang: "zh",
+  translateHistoryEnabled: true,
+  translateFallbackEnabled: true,
 };
 
 function formatSize(bytes?: number) {
@@ -999,7 +1003,39 @@ function App() {
                 <button className="settings-action danger" onClick={handleClearClipboardHistory}>清空本地历史</button>
               </div>
               <div className="settings-card">
-                <h3>翻译与集成</h3>
+                <h3>翻译设置</h3>
+                <div className="settings-row">
+                  <span>默认翻译源</span>
+                  <select className="settings-select" value={settings.translateProvider} onChange={(event) => updateSettings({ translateProvider: event.target.value as AppSettings["translateProvider"] })}>
+                    <option value="auto">自动选择（多源对比）</option>
+                    <option value="mymemory">MyMemory（免费）</option>
+                    <option value="libretranslate">LibreTranslate（开源）</option>
+                  </select>
+                </div>
+                <div className="settings-row">
+                  <span>默认目标语言</span>
+                  <select className="settings-select" value={settings.translateTargetLang} onChange={(event) => updateSettings({ translateTargetLang: event.target.value })}>
+                    <option value="zh">中文简体</option>
+                    <option value="en">English</option>
+                    <option value="ja">日本語</option>
+                    <option value="ko">한국어</option>
+                    <option value="fr">Français</option>
+                    <option value="de">Deutsch</option>
+                    <option value="es">Español</option>
+                  </select>
+                </div>
+                <div className="settings-row">
+                  <span>保存翻译历史</span>
+                  <button className={`settings-toggle ${settings.translateHistoryEnabled ? "active" : ""}`} onClick={() => updateSettings({ translateHistoryEnabled: !settings.translateHistoryEnabled })}>{settings.translateHistoryEnabled ? "开启" : "关闭"}</button>
+                </div>
+                <div className="settings-row">
+                  <span>自动切换备用源</span>
+                  <button className={`settings-toggle ${settings.translateFallbackEnabled ? "active" : ""}`} onClick={() => updateSettings({ translateFallbackEnabled: !settings.translateFallbackEnabled })}>{settings.translateFallbackEnabled ? "开启" : "关闭"}</button>
+                </div>
+                <div className="settings-note">多翻译源支持 MyMemory 和 LibreTranslate，自动模式下会同时请求多个源并对比结果。</div>
+              </div>
+              <div className="settings-card">
+                <h3>外观</h3>
                 <div className="settings-row">
                   <span>主题</span>
                   <select className="settings-select" value={settings.theme} onChange={(event) => updateSettings({ theme: event.target.value as AppSettings["theme"] })}>
@@ -1007,7 +1043,6 @@ function App() {
                     <option value="system">跟随系统</option>
                   </select>
                 </div>
-                <div className="settings-note">截图翻译、划词翻译、结果复制已连接；多翻译源和第三方应用集成保留入口。</div>
               </div>
             </div>
           )}

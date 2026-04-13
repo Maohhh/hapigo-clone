@@ -1,38 +1,44 @@
-# Hapigo Clone Full Product Completion Sprint
+# Hapigo Clone 翻译工作台增强计划
 
-## Goal
-把 Hapigo Clone 从当前的半成品原型推进到一个可集中验收的完整版本，优先补齐核心工作流、真实动作、命令/计算模式、剪贴板工作台、设置骨架与关键产品文档，不在未完成状态下中途交付给用户验收。
+## 当前状态
+- 项目路径：/Users/aqichita/projects/hapigo-clone
+- 核心功能已实现：搜索、命令模式、计算模式、剪贴板历史、划词翻译、截图翻译
+- 翻译当前支持 MyMemory 和 LibreTranslate 双源
 
-## Phases
-- [in_progress] 盘点当前代码、文档、未提交改动与真实缺口
-- [pending] 补齐搜索工作台真实动作与命令/计算模式
-- [pending] 强化剪贴板工作台与设置/主页联动
-- [pending] 继续扩展翻译工作台与整体一致性体验
-- [pending] 完成构建验收、文档同步、长期任务进度同步与提交整理
+## 目标功能（已完成）
 
-## Decisions
-- 以“可验收完整版”为目标推进，不再把 Hapigo clone 当作单页 demo。
-- 优先补齐最影响体验闭环的能力：真实动作、命令/计算模式、剪贴板、页面一致性、设置入口。
-- 本轮不盲目追求把所有官网集成一次性做完，先完成产品骨架 + 高价值核心能力，使之达到可以整体验收的程度。
-- 每完成一个阶段都更新 planning files 和长期任务进度，避免状态漂移。
+### 1. 多翻译源支持 ✅
+- [x] 添加 LibreTranslate 备用翻译源
+- [x] 实现翻译源自动切换（主源失败时自动使用备用源）
+- [x] 支持用户选择默认翻译源
 
-## Scope For This Sprint
-1. 搜索页
-   - 完整动作栏真实行为
-   - 命令/计算模式
-   - 更完整的预览与状态反馈
-2. 剪贴板页
-   - 真实可用的历史列表与复制动作
-   - 与主界面/搜索形成统一体验
-3. 翻译页
-   - 保持统一视觉
-   - 强化操作反馈
-4. 主页 / 设置
-   - 补足信息架构与可理解性
-5. 文档与验收
-   - 更新 PRODUCT_PLAN / MANUAL_ACCEPTANCE / progress / findings
+### 2. 翻译历史记录 ✅
+- [x] 创建 TranslationHistoryItem 类型
+- [x] 使用 localStorage 存储翻译历史
+- [x] 在 TranslatePanel 中添加历史记录面板
+- [x] 支持从历史记录重新翻译
+- [x] 支持删除单条历史记录
+- [x] 支持清空全部历史
 
-## Errors Encountered
-| Error | Attempt | Resolution |
-|---|---|---|
-| 现有 planning files 与当前项目状态不同步 | 直接沿用旧计划会误导实现 | 重写为本轮完整版冲刺计划 |
+### 3. 多翻译源结果对比 ✅
+- [x] 修改 TranslateResponse 支持多源结果
+- [x] 更新 UI 展示多源翻译结果
+- [x] 添加翻译源标识和置信度显示
+- [x] 支持显示多个翻译源的结果对比
+- [x] 支持收藏特定翻译结果
+
+### 4. 翻译设置 ✅
+- [x] 添加翻译相关设置到 AppSettings
+- [x] 默认翻译源选择
+- [x] 目标语言偏好设置
+- [x] 翻译历史保存开关
+- [x] 自动切换备用源开关
+
+## 实施记录
+
+1. ✅ 更新 types.ts 添加新类型定义
+2. ✅ 重构 translate.rs 实现多翻译源支持
+3. ✅ 更新 main.rs 添加新的命令
+4. ✅ 重写 TranslatePanel.tsx 实现新 UI
+5. ✅ 更新 App.tsx 添加翻译设置
+6. ✅ Rust 编译检查和前端类型检查通过

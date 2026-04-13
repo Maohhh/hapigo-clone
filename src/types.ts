@@ -42,6 +42,25 @@ export interface HomeShortcut {
   badge: string;
 }
 
+export type TranslateProvider = "mymemory" | "libretranslate" | "google" | "auto";
+
+export interface TranslateResult {
+  provider: TranslateProvider;
+  translated: string;
+  confidence?: number;
+  error?: string;
+}
+
+export interface TranslationHistoryItem {
+  id: string;
+  original: string;
+  results: TranslateResult[];
+  sourceLang: string;
+  targetLang: string;
+  timestamp: number;
+  favorite?: boolean;
+}
+
 export interface AppSettings {
   launchAtLogin: boolean;
   keepOnTop: boolean;
@@ -49,4 +68,9 @@ export interface AppSettings {
   clipboardHistoryEnabled: boolean;
   theme: "system" | "dark";
   searchLimit: number;
+  // 翻译设置
+  translateProvider: TranslateProvider;
+  translateTargetLang: string;
+  translateHistoryEnabled: boolean;
+  translateFallbackEnabled: boolean;
 }

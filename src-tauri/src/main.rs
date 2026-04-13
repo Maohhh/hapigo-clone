@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 mod translate;
 mod selection;
-use translate::{translate_with_mymemory, TranslateRequest, TranslateResponse};
+use translate::{translate, get_translate_providers, TranslateRequest, TranslateResponse};
 use selection::get_selected_text;
 
 #[cfg(target_os = "macos")]
@@ -97,8 +97,7 @@ fn copy_file_content_to_clipboard(path: String) -> Result<usize, String> {
 
 #[tauri::command]
 async fn translate_text(request: TranslateRequest) -> Result<TranslateResponse, String> {
-    // 使用 MyMemory API 进行翻译（免费，无需 API Key）
-    translate_with_mymemory(request).await
+    translate(request).await
 }
 
 #[tauri::command]
@@ -955,6 +954,7 @@ fn main() {
             copy_path_to_clipboard,
             copy_file_content_to_clipboard,
             translate_text,
+            get_translate_providers,
             capture_screen,
             capture_screen_text,
             get_selected_text_command,
