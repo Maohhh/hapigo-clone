@@ -3,7 +3,9 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 mod translate;
+mod selection;
 use translate::{translate_with_mymemory, TranslateRequest, TranslateResponse};
+use selection::get_selected_text;
 
 #[cfg(target_os = "macos")]
 #[link(name = "Vision", kind = "framework")]
@@ -118,9 +120,9 @@ async fn capture_screen_text() -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn get_selected_text() -> Result<String, String> {
+async fn get_selected_text_command() -> Result<String, String> {
     // 获取当前选中的文本
-    get_clipboard_text().await
+    get_selected_text().await
 }
 
 #[tauri::command]
@@ -317,18 +319,6 @@ fn recognize_text_from_image(image_bytes: &[u8]) -> Result<String, String> {
 #[cfg(not(target_os = "macos"))]
 fn recognize_text_from_image(_image_bytes: &[u8]) -> Result<String, String> {
     Err("OCR 仅在 macOS 上可用".to_string())
-}
-
-// 获取剪贴板文本
-async fn get_clipboard_text() -> Result<String, String> {
-    // 使用 arboard crate 读取剪贴板
-    use arboard::Clipboard;
-
-    let mut clipboard = Clipboard::new().map_err(|e| format!("无法访问剪贴板: {}", e))?;
-
-    clipboard
-        .get_text()
-        .map_err(|e| format!("读取剪贴板失败: {}", e))
 }
 
 #[cfg(target_os = "macos")]
@@ -967,7 +957,7 @@ fn main() {
             translate_text,
             capture_screen,
             capture_screen_text,
-            get_selected_text,
+            get_selected_text_command,
             get_preview_info,
             get_clipboard_history
         ])

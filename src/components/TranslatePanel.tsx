@@ -90,7 +90,7 @@ export default function TranslatePanel({ onStatus, initialText, initialTextVersi
   const handleGetSelectedText = async () => {
     setIsLoading(true);
     try {
-      const selectedText = await invoke<string>("get_selected_text");
+      const selectedText = await invoke<string>("get_selected_text_command");
       setText(selectedText);
       await translateInput(selectedText);
     } catch (error) {
