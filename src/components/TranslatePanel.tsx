@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
 
 interface TranslateResponse {
@@ -10,6 +10,8 @@ interface TranslateResponse {
 
 interface TranslatePanelProps {
   onStatus?: (message: string) => void;
+  initialText?: string;
+  initialTextVersion?: number;
 }
 
 const languages = [
@@ -22,7 +24,7 @@ const languages = [
   { value: "de", label: "Deutsch" },
 ];
 
-export default function TranslatePanel({ onStatus }: TranslatePanelProps) {
+export default function TranslatePanel({ onStatus, initialText, initialTextVersion }: TranslatePanelProps) {
   const [text, setText] = useState("");
   const [result, setResult] = useState<TranslateResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -31,6 +33,13 @@ export default function TranslatePanel({ onStatus }: TranslatePanelProps) {
   const [errorMessage, setErrorMessage] = useState("");
 
   const textLength = useMemo(() => text.trim().length, [text]);
+
+  useEffect(() => {
+    if (!initialText) return;
+    setText(initialText);
+    setResult(null);
+    setErrorMessage("");
+  }, [initialText, initialTextVersion]);
 
   const translateInput = async (input: string) => {
     const normalizedText = input.trim();

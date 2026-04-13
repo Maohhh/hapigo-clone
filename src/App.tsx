@@ -218,8 +218,10 @@ function App() {
   const [clipboardItems, setClipboardItems] = useState<ClipboardHistoryItem[]>([]);
   const [clipboardLoading, setClipboardLoading] = useState(false);
   const [clipboardSelectedId, setClipboardSelectedId] = useState<string | null>(null);
-  const [clipboardQuery, setClipboardQuery] = useState("");
+  const [clipboardQuery] = useState("");
   const [settings, setSettings] = useState<AppSettings>(() => loadStoredSettings());
+  const [translateInitialText, setTranslateInitialText] = useState("");
+  const [translateInitialTextVersion, setTranslateInitialTextVersion] = useState(0);
 
   const selectedResult = results[selectedIndex] ?? null;
   const filteredClipboardItems = useMemo(() => {
@@ -577,16 +579,6 @@ function App() {
     setInfo("剪贴板条目已移除");
   }, [clipboardQuery, selectedClipboardItem, setInfo]);
 
-  const handleToggleClipboardPin = useCallback(() => {
-    if (!selectedClipboardItem) return;
-    setClipboardItems((current) => {
-      const next = current.map((item) => item.id === selectedClipboardItem.id ? { ...item, pinned: !item.pinned } : item);
-      storeClipboardItems(next);
-      return next;
-    });
-    setInfo(selectedClipboardItem.pinned ? "剪贴板条目已取消固定" : "剪贴板条目已固定");
-  }, [selectedClipboardItem, setInfo]);
-
   const handleClearClipboardHistory = useCallback(() => {
     setClipboardItems([]);
     setClipboardSelectedId(null);
@@ -594,17 +586,12 @@ function App() {
     setInfo("本地剪贴板历史已清空");
   }, [setInfo]);
 
-  const handleUseClipboardInSearch = useCallback(() => {
-    if (!selectedClipboardItem) return;
-    setActiveTab("search");
-    void handleSearch(selectedClipboardItem.full_text);
-    setInfo("已将剪贴板内容送入搜索");
-  }, [handleSearch, selectedClipboardItem, setInfo]);
-
   const handleUseClipboardInTranslate = useCallback(() => {
     if (!selectedClipboardItem) return;
+    setTranslateInitialText(selectedClipboardItem.full_text);
+    setTranslateInitialTextVersion((version) => version + 1);
     setActiveTab("translate");
-    setInfo("已选择剪贴板内容，可在翻译页粘贴使用");
+    setInfo("已将剪贴板内容送入翻译");
   }, [selectedClipboardItem, setInfo]);
 
   const handleShareSelected = useCallback(async () => {
@@ -634,12 +621,24 @@ function App() {
   }, [handleOpenResult, selectedIndex]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (activeTab !== "search") return;
     if (e.isComposing) return;
     const target = e.target as HTMLElement | null;
     const tagName = target?.tagName;
     const isSearchInput = target?.dataset.searchInput === "true";
     if (!isSearchInput && (tagName === "BUTTON" || tagName === "SELECT" || tagName === "TEXTAREA")) return;
+
+    if (activeTab === "clipboard") {
+      if (!["1", "2", "3", "4", "5"].includes(e.key) || !selectedClipboardItem) return;
+      e.preventDefault();
+      if (e.key === "1") void handleCopyClipboardItem();
+      if (e.key === "2") handleDeleteClipboardItem();
+      if (e.key === "3") void loadClipboardHistory();
+      if (e.key === "4") handleClearClipboardHistory();
+      if (e.key === "5") handleUseClipboardInTranslate();
+      return;
+    }
+
+    if (activeTab !== "search") return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setSelectedIndex((prev) => Math.min(prev + 1, Math.max(results.length - 1, 0)));
@@ -659,7 +658,23 @@ function App() {
       if (e.key === "4") void handleCopyPath();
       if (e.key === "5" && isActionable) void handleShareSelected();
     }
-  }, [activeTab, results, selectedIndex, handleOpenSelected, isCalcResult, handleCopyResultContent, handleRevealSelected, handleCopyPath, handleShareSelected]);
+  }, [
+    activeTab,
+    results,
+    selectedIndex,
+    selectedClipboardItem,
+    handleOpenSelected,
+    isCalcResult,
+    handleCopyResultContent,
+    handleRevealSelected,
+    handleCopyPath,
+    handleShareSelected,
+    handleCopyClipboardItem,
+    handleDeleteClipboardItem,
+    loadClipboardHistory,
+    handleClearClipboardHistory,
+    handleUseClipboardInTranslate,
+  ]);
 
   useEffect(() => {
     window.addEventListener("keydown", handleKeyDown);
@@ -903,7 +918,7 @@ function App() {
             </div>
           )}
 
-          {activeTab === "translate" && <TranslatePanel onStatus={setInfo} />}
+          {activeTab === "translate" && <TranslatePanel onStatus={setInfo} initialText={translateInitialText} initialTextVersion={translateInitialTextVersion} />}
 
           {activeTab === "clipboard" && (
             <div className="clipboard-page">
@@ -940,6 +955,7 @@ function App() {
                       <button className="dock-btn" onClick={handleDeleteClipboardItem}>2 移除</button>
                       <button className="dock-btn" onClick={() => void loadClipboardHistory()}>3 刷新</button>
                       <button className="dock-btn" onClick={handleClearClipboardHistory}>4 清空</button>
+                      <button className="dock-btn" onClick={handleUseClipboardInTranslate}>5 翻译</button>
                     </div>
                   </>
                 ) : (
