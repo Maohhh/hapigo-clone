@@ -2,6 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+mod translate;
+use translate::{translate_with_mymemory, TranslateRequest, TranslateResponse};
+
 #[cfg(target_os = "macos")]
 #[link(name = "Vision", kind = "framework")]
 extern "C" {}
@@ -45,21 +48,6 @@ struct ClipboardHistoryItem {
 enum SearchResultType {
     App,
     File,
-}
-
-#[derive(Deserialize)]
-struct TranslateRequest {
-    text: String,
-    source_lang: Option<String>,
-    target_lang: String,
-}
-
-#[derive(Serialize)]
-struct TranslateResponse {
-    original: String,
-    translated: String,
-    source_lang: String,
-    target_lang: String,
 }
 
 #[tauri::command]
@@ -107,8 +95,8 @@ fn copy_file_content_to_clipboard(path: String) -> Result<usize, String> {
 
 #[tauri::command]
 async fn translate_text(request: TranslateRequest) -> Result<TranslateResponse, String> {
-    // 使用百度翻译 API (需要配置 appid 和 key)
-    translate_with_baidu(request).await
+    // 使用 MyMemory API 进行翻译（免费，无需 API Key）
+    translate_with_mymemory(request).await
 }
 
 #[tauri::command]
@@ -143,19 +131,6 @@ fn get_preview_info(path: String) -> Result<PreviewInfo, String> {
 #[tauri::command]
 async fn get_clipboard_history(limit: Option<usize>) -> Result<Vec<ClipboardHistoryItem>, String> {
     get_clipboard_history_items(limit.unwrap_or(12)).await
-}
-
-// 翻译实现
-async fn translate_with_baidu(request: TranslateRequest) -> Result<TranslateResponse, String> {
-    // 这里使用模拟翻译，实际应调用百度/有道/Google API
-    let translated = format!("[翻译结果] {}", request.text);
-
-    Ok(TranslateResponse {
-        original: request.text,
-        translated,
-        source_lang: request.source_lang.unwrap_or_else(|| "auto".to_string()),
-        target_lang: request.target_lang,
-    })
 }
 
 // 截图实现
