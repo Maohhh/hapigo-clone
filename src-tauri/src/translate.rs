@@ -49,6 +49,11 @@ struct LibreTranslateResponse {
     translated_text: String,
 }
 
+// Google Translate API 响应结构（gtx 端点返回嵌套数组）
+// 响应格式: [[[translated_text, original_text, ...], ...], ...]
+// 我们只需要提取第一个 translated_text
+type GoogleTranslateResponse = Vec<Vec<Vec<serde_json::Value>>>;
+
 /// 主翻译函数 - 支持多翻译源
 pub async fn translate(request: TranslateRequest) -> Result<TranslateResponse, String> {
     let source = request.source_lang.clone().unwrap_or_else(|| "auto".to_string());
@@ -69,6 +74,15 @@ pub async fn translate(request: TranslateRequest) -> Result<TranslateResponse, S
             }
             "libretranslate" => {
                 let result = translate_with_libretranslate(&text, &source, &target).await?;
+                return Ok(TranslateResponse {
+                    original: text,
+                    source_lang: source,
+                    target_lang: target,
+                    results: vec![result],
+                });
+            }
+            "google" => {
+                let result = translate_with_google(&text, &source, &target).await?;
                 return Ok(TranslateResponse {
                     original: text,
                     source_lang: source,
@@ -99,6 +113,17 @@ pub async fn translate(request: TranslateRequest) -> Result<TranslateResponse, S
         Ok(result) => results.push(result),
         Err(e) => results.push(TranslateResult {
             provider: "libretranslate".to_string(),
+            translated: String::new(),
+            confidence: None,
+            error: Some(e),
+        }),
+    }
+
+    // 最后尝试 Google Translate
+    match translate_with_google(&text, &source, &target).await {
+        Ok(result) => results.push(result),
+        Err(e) => results.push(TranslateResult {
+            provider: "google".to_string(),
             translated: String::new(),
             confidence: None,
             error: Some(e),
@@ -298,6 +323,95 @@ fn map_language_code_for_libretranslate(code: &str) -> String {
     }
 }
 
+/// 使用 Google Translate 公共端点进行翻译（无需 API Key）
+/// 使用 client=gtx 的公共端点，适合轻量使用
+async fn translate_with_google(
+    text: &str,
+    source: &str,
+    target: &str,
+) -> Result<TranslateResult, String> {
+    let source_code = map_language_code_for_google(source);
+    let target_code = map_language_code_for_google(target);
+    let encoded_text = urlencoding::encode(text);
+
+    let url = format!(
+        "https://translate.googleapis.com/translate_a/single?client=gtx&sl={}&tl={}&dt=t&q={}",
+        source_code, target_code, encoded_text
+    );
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
+
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Google 翻译请求失败: {}", e))?;
+
+    let status = response.status();
+    if !status.is_success() {
+        return Err(format!("Google 翻译返回错误: {}", status));
+    }
+
+    let google_response: GoogleTranslateResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("解析 Google 翻译响应失败: {}", e))?;
+
+    // 提取翻译结果
+    let translated = google_response
+        .get(0)
+        .and_then(|arr| arr.get(0))
+        .and_then(|arr| arr.get(0))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    if translated.is_empty() {
+        return Err("Google 翻译返回空结果".to_string());
+    }
+
+    Ok(TranslateResult {
+        provider: "google".to_string(),
+        translated,
+        confidence: None,
+        error: None,
+    })
+}
+
+/// 将语言代码映射为 Google Translate API 支持的格式
+fn map_language_code_for_google(code: &str) -> String {
+    match code.to_lowercase().as_str() {
+        "auto" | "autodetect" => "auto".to_string(),
+        "zh" | "zh-cn" | "zh-hans" | "zh-hans-cn" => "zh-CN".to_string(),
+        "zh-tw" | "zh-hant" | "zh-hant-tw" => "zh-TW".to_string(),
+        "en" | "en-us" | "en-gb" => "en".to_string(),
+        "ja" | "jp" => "ja".to_string(),
+        "ko" | "kr" => "ko".to_string(),
+        "fr" => "fr".to_string(),
+        "de" => "de".to_string(),
+        "es" => "es".to_string(),
+        "it" => "it".to_string(),
+        "ru" => "ru".to_string(),
+        "pt" => "pt".to_string(),
+        "ar" => "ar".to_string(),
+        "th" => "th".to_string(),
+        "vi" => "vi".to_string(),
+        "id" => "id".to_string(),
+        "ms" => "ms".to_string(),
+        "tr" => "tr".to_string(),
+        "pl" => "pl".to_string(),
+        "nl" => "nl".to_string(),
+        "sv" => "sv".to_string(),
+        "cs" => "cs".to_string(),
+        "el" => "el".to_string(),
+        "hi" => "hi".to_string(),
+        _ => code.to_string(),
+    }
+}
+
 /// 获取支持的翻译源列表
 #[tauri::command]
 pub fn get_translate_providers() -> Vec<(&'static str, &'static str)> {
@@ -305,5 +419,6 @@ pub fn get_translate_providers() -> Vec<(&'static str, &'static str)> {
         ("auto", "自动选择（多源对比）"),
         ("mymemory", "MyMemory（免费）"),
         ("libretranslate", "LibreTranslate（开源）"),
+        ("google", "Google Translate（公共端点）"),
     ]
 }
