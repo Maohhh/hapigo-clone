@@ -119,6 +119,20 @@ async fn capture_screen_text() -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn ocr_text() -> Result<String, String> {
+    // 独立的截图 OCR 命令，识别结果直接返回并写入剪贴板
+    let image_bytes = capture_screen_to_png_bytes().await?;
+    let recognized_text = recognize_text_from_image(&image_bytes)?;
+
+    if recognized_text.trim().is_empty() {
+        return Err("未识别到文字".to_string());
+    }
+
+    write_clipboard_text(&recognized_text)?;
+    Ok(recognized_text)
+}
+
+#[tauri::command]
 async fn get_selected_text_command() -> Result<String, String> {
     // 获取当前选中的文本
     get_selected_text().await
@@ -957,6 +971,7 @@ fn main() {
             get_translate_providers,
             capture_screen,
             capture_screen_text,
+            ocr_text,
             get_selected_text_command,
             get_preview_info,
             get_clipboard_history

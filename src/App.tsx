@@ -30,6 +30,7 @@ const commandCatalog: SearchResult[] = [
   { id: "command-pin", type: "command", title: "切换置顶", subtitle: "/pin - 标记窗口置顶偏好", icon: "📌", command: "pin" },
   { id: "command-refresh-clipboard", type: "command", title: "刷新剪贴板", subtitle: "/refresh clipboard - 读取当前系统剪贴板", icon: "↻", command: "refresh-clipboard" },
   { id: "command-clear-clipboard", type: "command", title: "清空系统剪贴板", subtitle: "/clear clipboard - 清空系统剪贴板并保留本地历史", icon: "⌫", command: "clear-clipboard" },
+  { id: "command-ocr", type: "command", title: "截图 OCR", subtitle: "/ocr - 截取屏幕并识别文字写入剪贴板", icon: "📷", command: "ocr" },
   { id: "command-help", type: "command", title: "查看可用命令", subtitle: "/help - 显示搜索、翻译、剪贴板、设置命令", icon: "?", command: "help" },
 ];
 
@@ -456,12 +457,25 @@ function App() {
       void handleClearSystemClipboard();
       return;
     }
+    if (command === "ocr") {
+      setInfo("正在截图识别...");
+      void (async () => {
+        try {
+          const text = await invoke<string>("ocr_text");
+          rememberClipboardText(text, "ocr");
+          setInfo(`OCR 完成，已识别 ${text.length} 个字符并写入剪贴板`);
+        } catch (error) {
+          setInfo(`OCR 失败：${String(error)}`);
+        }
+      })();
+      return;
+    }
     if (command === "help") {
       setActiveTab("search");
       setQuery("/");
       setResults(commandCatalog);
       setSelectedIndex(0);
-      setInfo("可用命令：/search、/translate、/clipboard、/settings、/pin、/refresh clipboard、/clear clipboard");
+      setInfo("可用命令：/search、/translate、/clipboard、/settings、/pin、/refresh clipboard、/clear clipboard、/ocr");
       return;
     }
     if (["home", "search", "translate", "clipboard", "settings"].includes(command)) {
