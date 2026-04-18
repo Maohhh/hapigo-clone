@@ -50,6 +50,14 @@ const defaultSettings: AppSettings = {
   translateFallbackEnabled: true,
 };
 
+function normalizeStoredSettings(settings: Partial<AppSettings> & { theme?: string }): AppSettings {
+  return {
+    ...defaultSettings,
+    ...settings,
+    theme: settings.theme === "light" ? "light" : "dark",
+  };
+}
+
 function formatSize(bytes?: number) {
   if (!bytes && bytes !== 0) return "-";
   if (bytes < 1024) return `${bytes} B`;
@@ -124,7 +132,7 @@ function loadStoredSettings(): AppSettings {
   try {
     const raw = window.localStorage.getItem(settingsStorageKey);
     if (!raw) return defaultSettings;
-    return { ...defaultSettings, ...JSON.parse(raw) };
+    return normalizeStoredSettings(JSON.parse(raw));
   } catch {
     return defaultSettings;
   }
@@ -250,6 +258,11 @@ function App() {
       return next;
     });
   }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = settings.theme;
+    document.documentElement.style.colorScheme = settings.theme;
+  }, [settings.theme]);
 
   const setPinned = useCallback(async (nextPinned: boolean) => {
     setIsPinned(nextPinned);
@@ -437,6 +450,19 @@ function App() {
     }
   }, [clipboardItems, rememberClipboardText, setInfo]);
 
+  const sendTextToTranslate = useCallback((text: string, statusMessage: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      setInfo("没有可送入翻译的文本");
+      return;
+    }
+
+    setTranslateInitialText(trimmed);
+    setTranslateInitialTextVersion((version) => version + 1);
+    setActiveTab("translate");
+    setInfo(statusMessage);
+  }, [setInfo]);
+
   const executeCommand = useCallback((command?: string) => {
     if (!command) return;
     if (command.startsWith("clipboard-item:")) {
@@ -463,7 +489,7 @@ function App() {
         try {
           const text = await invoke<string>("ocr_text");
           rememberClipboardText(text, "ocr");
-          setInfo(`OCR 完成，已识别 ${text.length} 个字符并写入剪贴板`);
+          sendTextToTranslate(text, `OCR 完成，已将 ${text.trim().length} 个字符送入翻译`);
         } catch (error) {
           setInfo(`OCR 失败：${String(error)}`);
         }
@@ -482,7 +508,7 @@ function App() {
       setActiveTab(command as NavTab);
       setInfo(`已执行命令：/${command}`);
     }
-  }, [copyClipboardItemById, handleClearSystemClipboard, isPinned, loadClipboardHistory, setInfo, setPinned]);
+  }, [copyClipboardItemById, handleClearSystemClipboard, isPinned, loadClipboardHistory, rememberClipboardText, sendTextToTranslate, setInfo, setPinned]);
 
   const handleOpenResult = useCallback(async (index: number) => {
     const item = results[index];
@@ -606,11 +632,8 @@ function App() {
 
   const handleUseClipboardInTranslate = useCallback(() => {
     if (!selectedClipboardItem) return;
-    setTranslateInitialText(selectedClipboardItem.full_text);
-    setTranslateInitialTextVersion((version) => version + 1);
-    setActiveTab("translate");
-    setInfo("已将剪贴板内容送入翻译");
-  }, [selectedClipboardItem, setInfo]);
+    sendTextToTranslate(selectedClipboardItem.full_text, "已将剪贴板内容送入翻译");
+  }, [selectedClipboardItem, sendTextToTranslate]);
 
   const handleShareSelected = useCallback(async () => {
     if (!selectedResult) return;
@@ -828,6 +851,13 @@ function App() {
           </div>
 
           <div className="topbar-actions">
+            <button
+              className="icon-btn"
+              onClick={() => updateSettings({ theme: settings.theme === "dark" ? "light" : "dark" })}
+              title={settings.theme === "dark" ? "切换到亮色模式" : "切换到暗色模式"}
+            >
+              {settings.theme === "dark" ? "☀" : "☾"}
+            </button>
             <button className="icon-btn">≡</button>
             <button className="icon-btn">⏸</button>
             <button className={`icon-btn ${isPinned ? "active" : ""}`} onClick={() => void setPinned(!isPinned)}>📌</button>
@@ -1054,9 +1084,10 @@ function App() {
                   <span>主题</span>
                   <select className="settings-select" value={settings.theme} onChange={(event) => updateSettings({ theme: event.target.value as AppSettings["theme"] })}>
                     <option value="dark">深色</option>
-                    <option value="system">跟随系统</option>
+                    <option value="light">亮色</option>
                   </select>
                 </div>
+                <div className="settings-note">主题偏好会保存到本地，下次启动自动恢复。</div>
               </div>
             </div>
           )}

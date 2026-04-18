@@ -66,7 +66,7 @@ export interface AppSettings {
   keepOnTop: boolean;
   autoHideAfterOpen: boolean;
   clipboardHistoryEnabled: boolean;
-  theme: "system" | "dark";
+  theme: "light" | "dark";
   searchLimit: number;
   // 翻译设置
   translateProvider: TranslateProvider;
