@@ -4,6 +4,7 @@ import { appWindow } from "@tauri-apps/api/window";
 import SearchBox from "./components/SearchBox";
 import ResultList from "./components/ResultList";
 import TranslatePanel from "./components/TranslatePanel";
+import { ThemeProvider, useTheme } from "./theme";
 import { AppSettings, ClipboardHistoryItem, HomeShortcut, NavTab, PreviewInfo, SearchResult } from "./types";
 
 const homeShortcuts: HomeShortcut[] = [
@@ -30,7 +31,7 @@ const commandCatalog: SearchResult[] = [
   { id: "command-pin", type: "command", title: "切换置顶", subtitle: "/pin - 标记窗口置顶偏好", icon: "📌", command: "pin" },
   { id: "command-refresh-clipboard", type: "command", title: "刷新剪贴板", subtitle: "/refresh clipboard - 读取当前系统剪贴板", icon: "↻", command: "refresh-clipboard" },
   { id: "command-clear-clipboard", type: "command", title: "清空系统剪贴板", subtitle: "/clear clipboard - 清空系统剪贴板并保留本地历史", icon: "⌫", command: "clear-clipboard" },
-  { id: "command-ocr", type: "command", title: "截图 OCR", subtitle: "/ocr - 截取屏幕并识别文字写入剪贴板", icon: "📷", command: "ocr" },
+  { id: "command-ocr", type: "command", title: "截图 OCR", subtitle: "/ocr - 截图识别后送入翻译面板", icon: "📷", command: "ocr" },
   { id: "command-help", type: "command", title: "查看可用命令", subtitle: "/help - 显示搜索、翻译、剪贴板、设置命令", icon: "?", command: "help" },
 ];
 
@@ -136,6 +137,20 @@ function loadStoredSettings(): AppSettings {
   } catch {
     return defaultSettings;
   }
+}
+
+function ThemeToggleButton() {
+  const { theme, toggleTheme } = useTheme();
+
+  return (
+    <button
+      className="icon-btn"
+      onClick={toggleTheme}
+      title={theme === "dark" ? "切换到亮色模式" : "切换到暗色模式"}
+    >
+      {theme === "dark" ? "☀" : "☾"}
+    </button>
+  );
 }
 
 function storeSettings(settings: AppSettings) {
@@ -258,6 +273,12 @@ function App() {
       return next;
     });
   }, []);
+
+  const themeContextValue = useMemo(() => ({
+    theme: settings.theme,
+    setTheme: (theme: AppSettings["theme"]) => updateSettings({ theme }),
+    toggleTheme: () => updateSettings({ theme: settings.theme === "dark" ? "light" : "dark" }),
+  }), [settings.theme, updateSettings]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = settings.theme;
@@ -805,6 +826,7 @@ function App() {
   }, [query, results.length, selectedIndex, statusText]);
 
   return (
+    <ThemeProvider value={themeContextValue}>
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-block">
@@ -844,20 +866,14 @@ function App() {
             <div className="topbar-subtitle">
               {activeTab === "home" && "统一入口、模块导航和状态总览"}
               {activeTab === "search" && "搜索、动作、预览、命令/计算已纳入同一工作台"}
-              {activeTab === "translate" && "统一深色语言下的输入、截图和翻译结果"}
+              {activeTab === "translate" && "输入、截图 OCR 和多源翻译结果"}
               {activeTab === "clipboard" && "最近内容、预览和重新复制能力"}
               {activeTab === "settings" && "快捷键、主题、集成和窗口行为"}
             </div>
           </div>
 
           <div className="topbar-actions">
-            <button
-              className="icon-btn"
-              onClick={() => updateSettings({ theme: settings.theme === "dark" ? "light" : "dark" })}
-              title={settings.theme === "dark" ? "切换到亮色模式" : "切换到暗色模式"}
-            >
-              {settings.theme === "dark" ? "☀" : "☾"}
-            </button>
+            <ThemeToggleButton />
             <button className="icon-btn">≡</button>
             <button className="icon-btn">⏸</button>
             <button className={`icon-btn ${isPinned ? "active" : ""}`} onClick={() => void setPinned(!isPinned)}>📌</button>
@@ -966,7 +982,15 @@ function App() {
             </div>
           )}
 
-          {activeTab === "translate" && <TranslatePanel onStatus={setInfo} initialText={translateInitialText} initialTextVersion={translateInitialTextVersion} />}
+          {activeTab === "translate" && (
+            <TranslatePanel
+              onStatus={setInfo}
+              initialText={translateInitialText}
+              initialTextVersion={translateInitialTextVersion}
+              appSettings={settings}
+              onSettingsChange={updateSettings}
+            />
+          )}
 
           {activeTab === "clipboard" && (
             <div className="clipboard-page">
@@ -1054,6 +1078,7 @@ function App() {
                     <option value="auto">自动选择（多源对比）</option>
                     <option value="mymemory">MyMemory（免费）</option>
                     <option value="libretranslate">LibreTranslate（开源）</option>
+                    <option value="google">Google Translate</option>
                   </select>
                 </div>
                 <div className="settings-row">
@@ -1082,7 +1107,7 @@ function App() {
                 <h3>外观</h3>
                 <div className="settings-row">
                   <span>主题</span>
-                  <select className="settings-select" value={settings.theme} onChange={(event) => updateSettings({ theme: event.target.value as AppSettings["theme"] })}>
+                  <select className="settings-select" value={settings.theme} onChange={(event) => themeContextValue.setTheme(event.target.value as AppSettings["theme"])}>
                     <option value="dark">深色</option>
                     <option value="light">亮色</option>
                   </select>
@@ -1094,6 +1119,7 @@ function App() {
         </section>
       </main>
     </div>
+    </ThemeProvider>
   );
 }
 

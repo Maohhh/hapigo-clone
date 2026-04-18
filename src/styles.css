@@ -923,6 +923,189 @@ button {
   font-size: 13px;
 }
 
+.translate-settings-panel,
+.translate-history-panel,
+.translate-compare-section {
+  margin-bottom: 16px;
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.translate-settings-panel h4,
+.translate-history-panel h4,
+.translate-compare-section h4 {
+  margin-bottom: 12px;
+  font-size: 16px;
+}
+
+.history-header,
+.translate-result-header,
+.compare-item-header,
+.result-provider-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-header,
+.translate-result-header {
+  justify-content: space-between;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-item,
+.compare-item,
+.translate-error-item {
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+}
+
+.history-item-content {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.history-item-original {
+  color: #fff;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-item-meta {
+  margin-top: 6px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.54);
+  font-size: 12px;
+}
+
+.history-empty {
+  padding: 16px 0;
+  color: rgba(255, 255, 255, 0.52);
+}
+
+.text-btn {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.76);
+  cursor: pointer;
+}
+
+.text-btn.danger {
+  color: #ffb3ad;
+}
+
+.lang-switch-btn {
+  height: 48px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.86);
+  cursor: pointer;
+}
+
+.lang-switch-btn:disabled,
+.translate-inline-actions button:disabled,
+.translate-result-actions button:disabled,
+.translate-toolbar button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.translate-source-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  overflow-x: auto;
+}
+
+.source-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 3px solid transparent;
+  border-radius: 12px 12px 0 0;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.78);
+  cursor: pointer;
+}
+
+.source-tab.active {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.provider-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.confidence-badge {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+}
+
+.result-lang-info,
+.result-provider-info,
+.provider-name {
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 13px;
+}
+
+.translate-result-header {
+  margin-bottom: 14px;
+}
+
+.translate-compare-section {
+  margin-top: 16px;
+}
+
+.compare-item {
+  padding: 12px;
+  margin-top: 10px;
+  cursor: pointer;
+}
+
+.compare-item.selected {
+  border-color: rgba(54, 114, 255, 0.7);
+  background: rgba(54, 114, 255, 0.12);
+}
+
+.compare-item-text {
+  margin-top: 8px;
+  color: rgba(255, 255, 255, 0.86);
+  line-height: 1.6;
+}
+
+.translate-error-item {
+  margin-top: 10px;
+  padding: 10px 12px;
+  color: #ffb3ad;
+}
+
 @media (max-width: 1280px) {
   .clipboard-page,
   .search-main-card,
@@ -1022,6 +1205,8 @@ button {
 :root[data-theme="light"] .circle-btn,
 :root[data-theme="light"] .segmented-tab,
 :root[data-theme="light"] .dock-btn,
+:root[data-theme="light"] .source-tab,
+:root[data-theme="light"] .lang-switch-btn,
 :root[data-theme="light"] .translate-inline-actions button,
 :root[data-theme="light"] .translate-result-actions button,
 :root[data-theme="light"] .translate-toolbar button,
@@ -1045,8 +1230,14 @@ button {
 :root[data-theme="light"] .preview-meta-row,
 :root[data-theme="light"] .preview-snippet-card,
 :root[data-theme="light"] .settings-row,
+:root[data-theme="light"] .translate-settings-panel,
+:root[data-theme="light"] .translate-history-panel,
 :root[data-theme="light"] .translate-editor-card,
 :root[data-theme="light"] .translate-result-card,
+:root[data-theme="light"] .source-tab.active,
+:root[data-theme="light"] .history-item,
+:root[data-theme="light"] .compare-item,
+:root[data-theme="light"] .translate-error-item,
 :root[data-theme="light"] .clipboard-item,
 :root[data-theme="light"] .clipboard-fulltext {
   background: rgba(15, 23, 42, 0.05);
@@ -1090,6 +1281,9 @@ button {
 :root[data-theme="light"] .result-header,
 :root[data-theme="light"] .translate-result-source,
 :root[data-theme="light"] .result-lang-info,
+:root[data-theme="light"] .result-provider-info,
+:root[data-theme="light"] .provider-name,
+:root[data-theme="light"] .history-item-meta,
 :root[data-theme="light"] .clipboard-kind,
 :root[data-theme="light"] .clipboard-item-preview {
   color: rgba(23, 32, 51, 0.58);
@@ -1097,8 +1291,37 @@ button {
 
 :root[data-theme="light"] .preview-meta-row strong,
 :root[data-theme="light"] .preview-snippet-card pre,
+:root[data-theme="light"] .history-item-original,
+:root[data-theme="light"] .compare-item-text,
 :root[data-theme="light"] .clipboard-fulltext {
   color: rgba(23, 32, 51, 0.84);
+}
+
+:root[data-theme="light"] .history-empty {
+  color: rgba(23, 32, 51, 0.52);
+}
+
+:root[data-theme="light"] .confidence-badge {
+  background: rgba(15, 23, 42, 0.08);
+  color: rgba(23, 32, 51, 0.7);
+}
+
+:root[data-theme="light"] .translate-settings-panel,
+:root[data-theme="light"] .translate-history-panel,
+:root[data-theme="light"] .translate-compare-section,
+:root[data-theme="light"] .history-item,
+:root[data-theme="light"] .compare-item,
+:root[data-theme="light"] .translate-error-item {
+  border-color: rgba(15, 23, 42, 0.1);
+}
+
+:root[data-theme="light"] .compare-item.selected {
+  border-color: rgba(47, 111, 255, 0.55);
+  background: rgba(47, 111, 255, 0.08);
+}
+
+:root[data-theme="light"] .text-btn {
+  color: rgba(23, 32, 51, 0.72);
 }
 
 :root[data-theme="light"] .action-dock {

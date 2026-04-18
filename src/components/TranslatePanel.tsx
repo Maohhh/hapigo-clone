@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
-import type { TranslateProvider, TranslateResult, TranslationHistoryItem } from "../types";
+import type { AppSettings, TranslateProvider, TranslateResult, TranslationHistoryItem } from "../types";
 
 interface TranslateResponse {
   original: string;
@@ -13,6 +13,8 @@ interface TranslatePanelProps {
   onStatus?: (message: string) => void;
   initialText?: string;
   initialTextVersion?: number;
+  appSettings: AppSettings;
+  onSettingsChange: (patch: Partial<AppSettings>) => void;
 }
 
 const languages = [
@@ -56,6 +58,15 @@ const defaultSettings: TranslateSettings = {
   fallbackEnabled: true,
 };
 
+function translateSettingsFromAppSettings(appSettings: AppSettings): TranslateSettings {
+  return {
+    provider: appSettings.translateProvider,
+    targetLang: appSettings.translateTargetLang,
+    historyEnabled: appSettings.translateHistoryEnabled,
+    fallbackEnabled: appSettings.translateFallbackEnabled,
+  };
+}
+
 function loadSettings(): TranslateSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -85,14 +96,17 @@ function saveHistory(history: TranslationHistoryItem[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(history.slice(0, 50)));
 }
 
-export default function TranslatePanel({ onStatus, initialText, initialTextVersion }: TranslatePanelProps) {
+export default function TranslatePanel({ onStatus, initialText, initialTextVersion, appSettings, onSettingsChange }: TranslatePanelProps) {
   const [text, setText] = useState("");
   const [result, setResult] = useState<TranslateResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [sourceLang, setSourceLang] = useState("auto");
   const [targetLang, setTargetLang] = useState("zh");
   const [errorMessage, setErrorMessage] = useState("");
-  const [settings, setSettings] = useState<TranslateSettings>(loadSettings);
+  const [settings, setSettings] = useState<TranslateSettings>(() => ({
+    ...loadSettings(),
+    ...translateSettingsFromAppSettings(appSettings),
+  }));
   const [history, setHistory] = useState<TranslationHistoryItem[]>(loadHistory);
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -114,6 +128,27 @@ export default function TranslatePanel({ onStatus, initialText, initialTextVersi
     setTargetLang(settings.targetLang);
   }, [settings]);
 
+  // 同步全局设置页中的翻译偏好
+  useEffect(() => {
+    const nextSettings = translateSettingsFromAppSettings(appSettings);
+    setSettings((current) => {
+      if (
+        current.provider === nextSettings.provider &&
+        current.targetLang === nextSettings.targetLang &&
+        current.historyEnabled === nextSettings.historyEnabled &&
+        current.fallbackEnabled === nextSettings.fallbackEnabled
+      ) {
+        return current;
+      }
+      return nextSettings;
+    });
+  }, [
+    appSettings.translateProvider,
+    appSettings.translateTargetLang,
+    appSettings.translateHistoryEnabled,
+    appSettings.translateFallbackEnabled,
+  ]);
+
   // 同步历史记录到本地存储
   useEffect(() => {
     saveHistory(history);
@@ -125,7 +160,19 @@ export default function TranslatePanel({ onStatus, initialText, initialTextVersi
     setText(initialText);
     setResult(null);
     setErrorMessage("");
+    setSelectedResultIndex(0);
   }, [initialText, initialTextVersion]);
+
+  const updateTranslateSettings = useCallback((patch: Partial<TranslateSettings>) => {
+    const next = { ...settings, ...patch };
+    setSettings(next);
+    onSettingsChange({
+      translateProvider: next.provider,
+      translateTargetLang: next.targetLang,
+      translateHistoryEnabled: next.historyEnabled,
+      translateFallbackEnabled: next.fallbackEnabled,
+    });
+  }, [onSettingsChange, settings]);
 
   const addToHistory = useCallback((response: TranslateResponse) => {
     if (!settings.historyEnabled) return;
@@ -307,7 +354,7 @@ export default function TranslatePanel({ onStatus, initialText, initialTextVersi
               <span>翻译源</span>
               <select 
                 value={settings.provider}
-                onChange={(e) => setSettings(s => ({ ...s, provider: e.target.value as TranslateProvider }))}
+                onChange={(e) => updateTranslateSettings({ provider: e.target.value as TranslateProvider })}
               >
                 {providers.map(([value, label]) => (
                   <option key={value} value={value}>{label}</option>
@@ -318,7 +365,7 @@ export default function TranslatePanel({ onStatus, initialText, initialTextVersi
               <span>默认目标语言</span>
               <select 
                 value={settings.targetLang}
-                onChange={(e) => setSettings(s => ({ ...s, targetLang: e.target.value }))}
+                onChange={(e) => updateTranslateSettings({ targetLang: e.target.value })}
               >
                 {languages.filter(l => l.value !== "auto").map(lang => (
                   <option key={lang.value} value={lang.value}>{lang.label}</option>
@@ -329,7 +376,7 @@ export default function TranslatePanel({ onStatus, initialText, initialTextVersi
               <span>保存历史记录</span>
               <button 
                 className={`settings-toggle ${settings.historyEnabled ? "active" : ""}`}
-                onClick={() => setSettings(s => ({ ...s, historyEnabled: !s.historyEnabled }))}
+                onClick={() => updateTranslateSettings({ historyEnabled: !settings.historyEnabled })}
               >
                 {settings.historyEnabled ? "开启" : "关闭"}
               </button>
@@ -338,7 +385,7 @@ export default function TranslatePanel({ onStatus, initialText, initialTextVersi
               <span>自动切换备用源</span>
               <button 
                 className={`settings-toggle ${settings.fallbackEnabled ? "active" : ""}`}
-                onClick={() => setSettings(s => ({ ...s, fallbackEnabled: !s.fallbackEnabled }))}
+                onClick={() => updateTranslateSettings({ fallbackEnabled: !settings.fallbackEnabled })}
               >
                 {settings.fallbackEnabled ? "开启" : "关闭"}
               </button>
