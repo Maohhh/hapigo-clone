@@ -8,7 +8,7 @@ if [[ ! -d "${mount_dir}" ]]; then
   exit 0
 fi
 
-if ! mount | grep -F " on ${mount_dir} " >/dev/null; then
+if ! /sbin/mount | /usr/bin/grep -F " on ${mount_dir} " >/dev/null; then
   echo "Found ${mount_dir}, but it is not a mounted volume; leaving it alone."
   exit 0
 fi
@@ -18,7 +18,7 @@ if hdiutil detach "${mount_dir}"; then
   exit 0
 fi
 
-device="$(df -P "${mount_dir}" | awk 'NR == 2 { print $1 }')"
+device="$(/bin/df -P "${mount_dir}" | /usr/bin/awk 'NR == 2 { print $1 }')"
 if [[ -n "${device}" ]]; then
   hdiutil detach "${device}"
 else
